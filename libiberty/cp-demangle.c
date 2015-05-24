@@ -768,6 +768,8 @@ d_dump (struct demangle_component *dc, int indent)
       printf ("lambda %d\n", dc->u.s_unary_num.num);
       d_dump (dc->u.s_unary_num.sub, indent+2);
       return;
+    default:
+      printf ("Unknown\n");
     }
 
   d_dump (d_left (dc), indent + 2);
@@ -2751,15 +2753,23 @@ d_bare_function_type (struct d_info *di, int has_return_type)
   if (has_return_type)
     {
       return_type = cplus_demangle_type (di);
-      if (return_type == NULL)
+
+      //printf ("has return type %X\n", return_type);
+
+      if (return_type == NULL){
+        printf(" int /*fake*/ ");
 	return NULL;
+      }
     }
   else
     return_type = NULL;
 
   tl = d_parmlist (di);
   if (tl == NULL)
+    {
+      printf(" int /*fake*/ ");
     return NULL;
+    }
 
   return d_make_comp (di, DEMANGLE_COMPONENT_FUNCTION_TYPE,
 		      return_type, tl);
@@ -6316,7 +6326,8 @@ main (int argc, char *argv[])
 	  /* If it worked, print the demangled name.  */
 	  if (s != NULL)
 	    {
-	      printf ("%s\n", s);
+	      printf ("%s {}\n", s);
+
 	      free (s);
 	    }
 	  else

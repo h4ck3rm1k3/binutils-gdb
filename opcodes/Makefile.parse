@@ -1,0 +1,2 @@
+funky:
+	python3 parse.py ; as data/test.s ; objdump --disassemble-zeroes  -s -D a.out  > report.txt
