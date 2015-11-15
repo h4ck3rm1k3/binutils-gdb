@@ -1,6 +1,6 @@
 ;; Bootstrap the Scheme side of the gdb module.
 ;;
-;; Copyright (C) 2014 Free Software Foundation, Inc.
+;; Copyright (C) 2014-2015 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GDB.
 ;;
@@ -21,11 +21,21 @@
 ;; loaded with it are not compiled.  So we do very little here, and do
 ;; most of the initialization elsewhere.
 
-;; data-directory is provided by the C code.
-(load (string-append
-       (data-directory) file-name-separator-string "guile"
-       file-name-separator-string "gdb.scm"))
+;; Initialize the source and compiled file search paths.
+;; Note: 'guile-data-directory' is provided by the C code.
+(let ((module-dir (guile-data-directory)))
+  (set! %load-path (cons module-dir %load-path))
+  (set! %load-compiled-path (cons module-dir %load-compiled-path)))
+
+;; Load the (gdb) module.  This needs to be done here because C code relies on
+;; the availability of Scheme bindings such as '%print-exception-with-stack'.
+;; Note: as of Guile 2.0.11, 'primitive-load' evaluates the code and 'load'
+;; somehow ignores the '.go', hence 'load-compiled'.
+(let ((gdb-go-file (search-path %load-compiled-path "gdb.go")))
+  (if gdb-go-file
+      (load-compiled gdb-go-file)
+      (error "Unable to find gdb.go file.")))
 
 ;; Now that the Scheme side support is loaded, initialize it.
-(let ((init-proc (@@ (gdb init) %initialize!)))
+(let ((init-proc (@@ (gdb) %initialize!)))
   (init-proc))

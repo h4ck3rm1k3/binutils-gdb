@@ -1,6 +1,6 @@
 /* Everything about signal catchpoints, for GDB.
 
-   Copyright (C) 2011-2014 Free Software Foundation, Inc.
+   Copyright (C) 2011-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -23,6 +23,7 @@
 #include "breakpoint.h"
 #include "gdbcmd.h"
 #include "inferior.h"
+#include "infrun.h"
 #include "annotate.h"
 #include "valprint.h"
 #include "cli/cli-utils.h"
@@ -106,7 +107,7 @@ signal_catchpoint_dtor (struct breakpoint *b)
 static int
 signal_catchpoint_insert_location (struct bp_location *bl)
 {
-  struct signal_catchpoint *c = (void *) bl->owner;
+  struct signal_catchpoint *c = (struct signal_catchpoint *) bl->owner;
   int i;
 
   if (c->signals_to_be_caught != NULL)
@@ -138,7 +139,7 @@ signal_catchpoint_insert_location (struct bp_location *bl)
 static int
 signal_catchpoint_remove_location (struct bp_location *bl)
 {
-  struct signal_catchpoint *c = (void *) bl->owner;
+  struct signal_catchpoint *c = (struct signal_catchpoint *) bl->owner;
   int i;
 
   if (c->signals_to_be_caught != NULL)
@@ -179,7 +180,8 @@ signal_catchpoint_breakpoint_hit (const struct bp_location *bl,
 				  CORE_ADDR bp_addr,
 				  const struct target_waitstatus *ws)
 {
-  const struct signal_catchpoint *c = (void *) bl->owner;
+  const struct signal_catchpoint *c
+    = (const struct signal_catchpoint *) bl->owner;
   gdb_signal_type signal_number;
 
   if (ws->kind != TARGET_WAITKIND_STOPPED)
@@ -237,7 +239,7 @@ static void
 signal_catchpoint_print_one (struct breakpoint *b,
 			     struct bp_location **last_loc)
 {
-  struct signal_catchpoint *c = (void *) b;
+  struct signal_catchpoint *c = (struct signal_catchpoint *) b;
   struct value_print_options opts;
   struct ui_out *uiout = current_uiout;
 
@@ -295,7 +297,7 @@ signal_catchpoint_print_one (struct breakpoint *b,
 static void
 signal_catchpoint_print_mention (struct breakpoint *b)
 {
-  struct signal_catchpoint *c = (void *) b;
+  struct signal_catchpoint *c = (struct signal_catchpoint *) b;
 
   if (c->signals_to_be_caught)
     {
@@ -329,7 +331,7 @@ signal_catchpoint_print_mention (struct breakpoint *b)
 static void
 signal_catchpoint_print_recreate (struct breakpoint *b, struct ui_file *fp)
 {
-  struct signal_catchpoint *c = (void *) b;
+  struct signal_catchpoint *c = (struct signal_catchpoint *) b;
 
   fprintf_unfiltered (fp, "catch signal");
 
@@ -345,6 +347,7 @@ signal_catchpoint_print_recreate (struct breakpoint *b, struct ui_file *fp)
     }
   else if (c->catch_all)
     fprintf_unfiltered (fp, " all");
+  fputc_unfiltered ('\n', fp);
 }
 
 /* Implement the "explains_signal" breakpoint_ops method for signal

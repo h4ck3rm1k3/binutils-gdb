@@ -1,6 +1,6 @@
 /* Scheme interface to objfiles.
 
-   Copyright (C) 2008-2014 Free Software Foundation, Inc.
+   Copyright (C) 2008-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -62,22 +62,6 @@ ofscm_objfile_smob_pretty_printers (objfile_smob *o_smob)
 
 /* Administrivia for objfile smobs.  */
 
-/* The smob "mark" function for <gdb:objfile>.  */
-
-static SCM
-ofscm_mark_objfile_smob (SCM self)
-{
-  objfile_smob *o_smob = (objfile_smob *) SCM_SMOB_DATA (self);
-
-  scm_gc_mark (o_smob->pretty_printers);
-
-  /* We don't mark containing_scm here.  It is just a backlink to our
-     container, and is gc-protected until the objfile is deleted.  */
-
-  /* Do this last.  */
-  return gdbscm_mark_gsmob (&o_smob->base);
-}
-
 /* The smob "print" function for <gdb:objfile>.  */
 
 static int
@@ -132,7 +116,7 @@ ofscm_release_objfile (objfile_smob *o_smob)
 static void
 ofscm_handle_objfile_deleted (struct objfile *objfile, void *datum)
 {
-  objfile_smob *o_smob = datum;
+  objfile_smob *o_smob = (objfile_smob *) datum;
 
   gdb_assert (o_smob->objfile == objfile);
 
@@ -164,7 +148,7 @@ ofscm_objfile_smob_from_objfile (struct objfile *objfile)
 {
   objfile_smob *o_smob;
 
-  o_smob = objfile_data (objfile, ofscm_objfile_data_key);
+  o_smob = (objfile_smob *) objfile_data (objfile, ofscm_objfile_data_key);
   if (o_smob == NULL)
     {
       SCM o_scm = ofscm_make_objfile_smob ();
@@ -268,6 +252,19 @@ gdbscm_objfile_filename (SCM self)
   return gdbscm_scm_from_c_string (objfile_name (o_smob->objfile));
 }
 
+/* (objfile-progspace <gdb:objfile>) -> <gdb:progspace>
+   Returns the objfile's progspace.
+   Throw's an exception if the underlying objfile is invalid.  */
+
+static SCM
+gdbscm_objfile_progspace (SCM self)
+{
+  objfile_smob *o_smob
+    = ofscm_get_valid_objfile_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
+
+  return psscm_scm_from_pspace (o_smob->objfile->pspace);
+}
+
 /* (objfile-pretty-printers <gdb:objfile>) -> list
    Returns the list of pretty-printers for this objfile.  */
 
@@ -299,7 +296,8 @@ gdbscm_set_objfile_pretty_printers_x (SCM self, SCM printers)
 
 /* The "current" objfile.  This is set when gdb detects that a new
    objfile has been loaded.  It is only set for the duration of a call to
-   gdbscm_source_objfile_script; it is NULL at other times.  */
+   gdbscm_source_objfile_script and gdbscm_execute_objfile_script; it is NULL
+   at other times.  */
 static struct objfile *ofscm_current_objfile;
 
 /* Set the current objfile to OBJFILE and then read FILE named FILENAME
@@ -318,6 +316,31 @@ gdbscm_source_objfile_script (const struct extension_language_defn *extlang,
   ofscm_current_objfile = objfile;
 
   msg = gdbscm_safe_source_script (filename);
+  if (msg != NULL)
+    {
+      fprintf_filtered (gdb_stderr, "%s", msg);
+      xfree (msg);
+    }
+
+  ofscm_current_objfile = NULL;
+}
+
+/* Set the current objfile to OBJFILE and then read FILE named FILENAME
+   as Guile code.  This does not throw any errors.  If an exception
+   occurs Guile will print the backtrace.
+   This is the extension_language_script_ops.objfile_script_sourcer
+   "method".  */
+
+void
+gdbscm_execute_objfile_script (const struct extension_language_defn *extlang,
+			       struct objfile *objfile, const char *name,
+			       const char *script)
+{
+  char *msg;
+
+  ofscm_current_objfile = objfile;
+
+  msg = gdbscm_safe_eval_string (script, 0 /* display_result */);
   if (msg != NULL)
     {
       fprintf_filtered (gdb_stderr, "%s", msg);
@@ -366,32 +389,37 @@ gdbscm_objfiles (void)
 
 static const scheme_function objfile_functions[] =
 {
-  { "objfile?", 1, 0, 0, gdbscm_objfile_p,
+  { "objfile?", 1, 0, 0, as_a_scm_t_subr (gdbscm_objfile_p),
     "\
 Return #t if the object is a <gdb:objfile> object." },
 
-  { "objfile-valid?", 1, 0, 0, gdbscm_objfile_valid_p,
+  { "objfile-valid?", 1, 0, 0, as_a_scm_t_subr (gdbscm_objfile_valid_p),
     "\
 Return #t if the objfile is valid (hasn't been deleted from gdb)." },
 
-  { "objfile-filename", 1, 0, 0, gdbscm_objfile_filename,
+  { "objfile-filename", 1, 0, 0, as_a_scm_t_subr (gdbscm_objfile_filename),
     "\
 Return the file name of the objfile." },
 
-  { "objfile-pretty-printers", 1, 0, 0, gdbscm_objfile_pretty_printers,
+  { "objfile-progspace", 1, 0, 0, as_a_scm_t_subr (gdbscm_objfile_progspace),
+    "\
+Return the progspace that the objfile lives in." },
+
+  { "objfile-pretty-printers", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_objfile_pretty_printers),
     "\
 Return a list of pretty-printers of the objfile." },
 
   { "set-objfile-pretty-printers!", 2, 0, 0,
-    gdbscm_set_objfile_pretty_printers_x,
+    as_a_scm_t_subr (gdbscm_set_objfile_pretty_printers_x),
     "\
 Set the list of pretty-printers of the objfile." },
 
-  { "current-objfile", 0, 0, 0, gdbscm_get_current_objfile,
+  { "current-objfile", 0, 0, 0, as_a_scm_t_subr (gdbscm_get_current_objfile),
     "\
 Return the current objfile if there is one or #f if there isn't one." },
 
-  { "objfiles", 0, 0, 0, gdbscm_objfiles,
+  { "objfiles", 0, 0, 0, as_a_scm_t_subr (gdbscm_objfiles),
     "\
 Return a list of all objfiles in the current program space." },
 
@@ -403,7 +431,6 @@ gdbscm_initialize_objfiles (void)
 {
   objfile_smob_tag
     = gdbscm_make_smob_type (objfile_smob_name, sizeof (objfile_smob));
-  scm_set_smob_mark (objfile_smob_tag, ofscm_mark_objfile_smob);
   scm_set_smob_print (objfile_smob_tag, ofscm_print_objfile_smob);
 
   gdbscm_define_functions (objfile_functions, 1);

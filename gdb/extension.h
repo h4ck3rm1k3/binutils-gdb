@@ -1,6 +1,6 @@
 /* Interface between gdb and its extension languages.
 
-   Copyright (C) 2014 Free Software Foundation, Inc.
+   Copyright (C) 2014-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -21,6 +21,7 @@
 #define EXTENSION_H
 
 #include "mi/mi-cmds.h" /* For PRINT_NO_VALUES, etc.  */
+#include "common/vec.h"
 
 struct breakpoint;
 struct command_line;
@@ -46,6 +47,12 @@ typedef void script_sourcer_func (const struct extension_language_defn *,
 typedef void objfile_script_sourcer_func
   (const struct extension_language_defn *,
    struct objfile *, FILE *stream, const char *filename);
+
+/* A function to execute a script for an objfile.
+   Any exceptions are not caught, and are passed to the caller.  */
+typedef void objfile_script_executor_func
+  (const struct extension_language_defn *,
+   struct objfile *, const char *name, const char *script);
 
 /* Enum of each extension(/scripting) language.  */
 
@@ -138,6 +145,26 @@ struct ext_lang_type_printers
   /* Type-printers from Python.  */
   void *py_type_printers;
 };
+
+/* A type which holds its extension language specific xmethod worker data.  */
+
+struct xmethod_worker
+{
+  /* The language the xmethod worker is implemented in.  */
+  const struct extension_language_defn *extlang;
+
+  /* The extension language specific data for this xmethod worker.  */
+  void *data;
+
+  /* The TYPE_CODE_XMETHOD value corresponding to this worker.
+     Always use value_of_xmethod to access it.  */
+  struct value *value;
+};
+
+typedef struct xmethod_worker *xmethod_worker_ptr;
+DEF_VEC_P (xmethod_worker_ptr);
+typedef VEC (xmethod_worker_ptr) xmethod_worker_vec;
+
 
 /* The interface for gdb's own extension(/scripting) language.  */
 extern const struct extension_language_defn extension_language_gdb;
@@ -176,6 +203,9 @@ extern script_sourcer_func *ext_lang_script_sourcer
 extern objfile_script_sourcer_func *ext_lang_objfile_script_sourcer
   (const struct extension_language_defn *);
 
+extern objfile_script_executor_func *ext_lang_objfile_script_executor
+  (const struct extension_language_defn *);
+
 extern int ext_lang_auto_load_enabled (const struct extension_language_defn *);
 
 /* Wrappers for each extension language API function that iterate over all
@@ -211,5 +241,27 @@ extern const struct extension_language_defn *get_breakpoint_cond_ext_lang
   (struct breakpoint *b, enum extension_language skip_lang);
 
 extern int breakpoint_ext_lang_cond_says_stop (struct breakpoint *);
+
+extern struct value *invoke_xmethod (struct xmethod_worker *,
+				     struct value *,
+				     struct value **, int nargs);
+
+extern struct xmethod_worker *clone_xmethod_worker (struct xmethod_worker *);
+
+extern struct xmethod_worker *new_xmethod_worker
+  (const struct extension_language_defn *extlang, void *data);
+
+extern void free_xmethod_worker (struct xmethod_worker *);
+
+extern void free_xmethod_worker_vec (void *vec);
+
+extern xmethod_worker_vec *get_matching_xmethod_workers
+  (struct type *, const char *);
+
+extern struct type **get_xmethod_arg_types (struct xmethod_worker *, int *);
+
+extern struct type *get_xmethod_result_type (struct xmethod_worker *,
+					     struct value *object,
+					     struct value **args, int nargs);
 
 #endif /* EXTENSION_H */

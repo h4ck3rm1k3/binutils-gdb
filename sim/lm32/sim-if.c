@@ -1,7 +1,7 @@
 /* Main simulator entry points specific to Lattice Mico32.
    Contributed by Jon Beniston <jon@beniston.com>
    
-   Copyright (C) 2009-2014 Free Software Foundation, Inc.
+   Copyright (C) 2009-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -245,15 +245,6 @@ sim_open (kind, callback, abfd, argv)
   current_state = sd;
 
   return sd;
-}
-
-void
-sim_close (sd, quitting)
-     SIM_DESC sd;
-     int quitting;
-{
-  lm32_cgen_cpu_close (CPU_CPU_DESC (STATE_CPU (sd, 0)));
-  sim_module_uninstall (sd);
 }
 
 SIM_RC

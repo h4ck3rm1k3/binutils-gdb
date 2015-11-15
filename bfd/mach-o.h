@@ -1,5 +1,5 @@
 /* Mach-O support for BFD.
-   Copyright (C) 1999-2014 Free Software Foundation, Inc.
+   Copyright (C) 1999-2015 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -23,6 +23,10 @@
 
 #include "bfd.h"
 #include "mach-o/loader.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct bfd_mach_o_header
 {
@@ -680,9 +684,11 @@ unsigned int bfd_mach_o_get_section_attribute_from_name (const char *);
 
 void bfd_mach_o_convert_section_name_to_bfd (bfd *, const char *, const char *,
 					     const char **, flagword *);
-bfd_boolean bfd_mach_o_find_nearest_line (bfd *, asection *, asymbol **,
-                                          bfd_vma, const char **,
-                                          const char **, unsigned int *);
+bfd_boolean bfd_mach_o_find_nearest_line (bfd *, asymbol **,
+					  asection *, bfd_vma,
+					  const char **, const char **,
+					  unsigned int *, unsigned int *);
+#define bfd_mach_o_find_line _bfd_nosymbols_find_line
 bfd_boolean bfd_mach_o_close_and_cleanup (bfd *);
 bfd_boolean bfd_mach_o_free_cached_info (bfd *);
 
@@ -743,5 +749,9 @@ bfd_mach_o_backend_data;
 
 #define SYM_MACHO_FIELDS_UNSET ((bfd_vma) -1)
 #define SYM_MACHO_FIELDS_NOT_VALIDATED ((bfd_vma) -2)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _BFD_MACH_O_H_ */

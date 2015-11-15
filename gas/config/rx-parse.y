@@ -1,5 +1,5 @@
 /* rx-parse.y  Renesas RX parser
-   Copyright (C) 2008-2014 Free Software Foundation, Inc.
+   Copyright (C) 2008-2015 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -500,27 +500,27 @@ statement :
 /* ---------------------------------------------------------------------- */
 
 	| SCMPU
-	  { B2 (0x7f, 0x83); }
+	  { B2 (0x7f, 0x83); rx_note_string_insn_use (); }
 	| SMOVU
-	  { B2 (0x7f, 0x87); }
+	  { B2 (0x7f, 0x87); rx_note_string_insn_use (); }
 	| SMOVB
-	  { B2 (0x7f, 0x8b); }
+	  { B2 (0x7f, 0x8b); rx_note_string_insn_use (); }
 	| SMOVF
-	  { B2 (0x7f, 0x8f); }
+	  { B2 (0x7f, 0x8f); rx_note_string_insn_use (); }
 
 /* ---------------------------------------------------------------------- */
 
 	| SUNTIL bwl
-	  { B2 (0x7f, 0x80); F ($2, 14, 2); }
+	  { B2 (0x7f, 0x80); F ($2, 14, 2); rx_note_string_insn_use (); }
 	| SWHILE bwl
-	  { B2 (0x7f, 0x84); F ($2, 14, 2); }
+	  { B2 (0x7f, 0x84); F ($2, 14, 2); rx_note_string_insn_use (); }
 	| SSTR bwl
 	  { B2 (0x7f, 0x88); F ($2, 14, 2); }
 
 /* ---------------------------------------------------------------------- */
 
 	| RMPA bwl
-	  { B2 (0x7f, 0x8c); F ($2, 14, 2); }
+	  { B2 (0x7f, 0x8c); F ($2, 14, 2); rx_note_string_insn_use (); }
 
 /* ---------------------------------------------------------------------- */
 
@@ -636,13 +636,13 @@ statement :
 	| BNOT REG ',' REG
 	  { id24 (1, 0x6f, 0x00); F ($4, 16, 4); F ($2, 20, 4); }
 
-	| BSET REG ',' disp '[' REG ']' DOT_B
+	| BSET REG ',' disp '[' REG ']' opt_b
 	  { id24 (1, 0x60, 0x00); F ($6, 16, 4); F ($2, 20, 4); DSP ($4, 14, BSIZE); }
-	| BCLR REG ',' disp '[' REG ']' DOT_B
+	| BCLR REG ',' disp '[' REG ']' opt_b
 	  { id24 (1, 0x64, 0x00); F ($6, 16, 4); F ($2, 20, 4); DSP ($4, 14, BSIZE); }
-	| BTST REG ',' disp '[' REG ']' DOT_B
+	| BTST REG ',' disp '[' REG ']' opt_b
 	  { id24 (1, 0x68, 0x00); F ($6, 16, 4); F ($2, 20, 4); DSP ($4, 14, BSIZE); }
-	| BNOT REG ',' disp '[' REG ']' DOT_B
+	| BNOT REG ',' disp '[' REG ']' opt_b
 	  { id24 (1, 0x6c, 0x00); F ($6, 16, 4); F ($2, 20, 4); DSP ($4, 14, BSIZE); }
 
 /* ---------------------------------------------------------------------- */
@@ -664,13 +664,13 @@ statement :
 
 /* ---------------------------------------------------------------------- */
 
-	| BMCND '#' EXPR ',' disp '[' REG ']' DOT_B
+	| BMCND '#' EXPR ',' disp '[' REG ']' opt_b
 	  { id24 (1, 0xe0, 0x00); F ($1, 20, 4); FE ($3, 11, 3);
 	      F ($7, 16, 4); DSP ($5, 14, BSIZE); }
 
 /* ---------------------------------------------------------------------- */
 
-	| BNOT '#' EXPR ',' disp '[' REG ']' DOT_B
+	| BNOT '#' EXPR ',' disp '[' REG ']' opt_b
 	  { id24 (1, 0xe0, 0x0f); FE ($3, 11, 3); F ($7, 16, 4);
 	      DSP ($5, 14, BSIZE); }
 
@@ -889,7 +889,7 @@ float2_op
 	;
 
 float2_op_ni
-	: { rx_check_float_support (); } 
+	: { rx_check_float_support (); }
 	  REG ',' REG
 	  { id24 (1, 0x83 + (sub_op << 2), 0); F ($2, 16, 4); F ($4, 20, 4); }
 	| { rx_check_float_support (); }
@@ -928,6 +928,10 @@ bw	:       { $$ = 1; }
 
 opt_l	: 	{}
 	| DOT_L {}
+	;
+
+opt_b	: 	{}
+	| DOT_B {}
 	;
 
 %%
@@ -1401,13 +1405,13 @@ rx_disp5op (expressionS * exp, int msize)
   switch (msize)
     {
     case BSIZE:
-      if (0 < v && v <= 31)
+      if (0 <= v && v <= 31)
 	return 1;
       break;
     case WSIZE:
       if (v & 1)
 	return 0;
-      if (0 < v && v <= 63)
+      if (0 <= v && v <= 63)
 	{
 	  exp->X_add_number >>= 1;
 	  return 1;
@@ -1416,7 +1420,7 @@ rx_disp5op (expressionS * exp, int msize)
     case LSIZE:
       if (v & 3)
 	return 0;
-      if (0 < v && v <= 127)
+      if (0 <= v && v <= 127)
 	{
 	  exp->X_add_number >>= 2;
 	  return 1;

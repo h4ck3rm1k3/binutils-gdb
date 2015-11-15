@@ -1,6 +1,6 @@
 // symtab.h -- the gold symbol table   -*- C++ -*-
 
-// Copyright (C) 2006-2014 Free Software Foundation, Inc.
+// Copyright (C) 2006-2015 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -140,6 +140,11 @@ class Symbol
   set_is_default()
   { this->is_def_ = true; }
 
+  // Set that this version is not the default for this symbol name.
+  void
+  set_is_not_default()
+  { this->is_def_ = false; }
+
   // Return the symbol's name as name@version (or name@@version).
   std::string
   versioned_name() const;
@@ -215,6 +220,11 @@ class Symbol
   type() const
   { return this->type_; }
 
+  // Set the symbol type.
+  void
+  set_type(elfcpp::STT type)
+  { this->type_ = type; }
+
   // Return true for function symbol.
   bool
   is_func() const
@@ -238,7 +248,7 @@ class Symbol
   override_visibility(elfcpp::STV);
 
   // Set whether the symbol was originally a weak undef or a regular undef
-  // when resolved by a dynamic def.
+  // when resolved by a dynamic def or by a special symbol.
   inline void
   set_undef_binding(elfcpp::STB bind)
   {
@@ -249,7 +259,8 @@ class Symbol
       }
   }
 
-  // Return TRUE if a weak undef was resolved by a dynamic def.
+  // Return TRUE if a weak undef was resolved by a dynamic def or
+  // by a special symbol.
   inline bool
   is_undef_binding_weak() const
   { return this->undef_binding_weak_; }
@@ -517,7 +528,22 @@ class Symbol
   // Return whether this is a weak undefined symbol.
   bool
   is_weak_undefined() const
-  { return this->is_undefined() && this->binding() == elfcpp::STB_WEAK; }
+  {
+    return (this->is_undefined()
+	    && (this->binding() == elfcpp::STB_WEAK
+		|| this->is_undef_binding_weak()
+		|| parameters->options().weak_unresolved_symbols()));
+  }
+
+  // Return whether this is a strong undefined symbol.
+  bool
+  is_strong_undefined() const
+  {
+    return (this->is_undefined()
+	    && this->binding() != elfcpp::STB_WEAK
+	    && !this->is_undef_binding_weak()
+	    && !parameters->options().weak_unresolved_symbols());
+  }
 
   // Return whether this is an absolute symbol.
   bool
@@ -536,8 +562,6 @@ class Symbol
   {
     if (this->source_ != FROM_OBJECT)
       return false;
-    if (this->type_ == elfcpp::STT_COMMON)
-      return true;
     bool is_ordinary;
     unsigned int shndx = this->shndx(&is_ordinary);
     return !is_ordinary && Symbol::is_common_shndx(shndx);
@@ -585,10 +609,8 @@ class Symbol
     if (parameters->options().in_dynamic_list(this->name()))
       return true;
 
-    // If the user used -Bsymbolic or provided a --dynamic-list script,
-    // then nothing (else) is preemptible.
-    if (parameters->options().Bsymbolic()
-        || parameters->options().have_dynamic_list())
+    // If the user used -Bsymbolic, then nothing (else) is preemptible.
+    if (parameters->options().Bsymbolic())
       return false;
 
     // If the user used -Bsymbolic-functions, then functions are not
@@ -782,6 +804,18 @@ class Symbol
   void
   set_output_section(Output_section*);
 
+  // Set the symbol's output segment.  This is used for pre-defined
+  // symbols whose segments aren't known until after layout is done
+  // (e.g., __ehdr_start).
+  void
+  set_output_segment(Output_segment*, Segment_offset_base);
+
+  // Set the symbol to undefined.  This is used for pre-defined
+  // symbols whose segments aren't known until after layout is done
+  // (e.g., __ehdr_start).
+  void
+  set_undefined();
+
   // Return whether there should be a warning for references to this
   // symbol.
   bool
@@ -821,8 +855,7 @@ class Symbol
   bool
   may_need_copy_reloc() const
   {
-    return (!parameters->options().output_is_position_independent()
-	    && parameters->options().copyreloc()
+    return (parameters->options().copyreloc()
 	    && this->is_from_dynobj()
 	    && !this->is_func());
   }
@@ -1030,7 +1063,7 @@ class Symbol
   // True if UNDEF_BINDING_WEAK_ has been set (bit 32).
   bool undef_binding_set_ : 1;
   // True if this symbol was a weak undef resolved by a dynamic def
-  // (bit 33).
+  // or by a special symbol (bit 33).
   bool undef_binding_weak_ : 1;
   // True if this symbol is a predefined linker symbol (bit 34).
   bool is_predefined_ : 1;
@@ -1342,7 +1375,7 @@ class Symbol_table
  
   // Returns true if ICF determined that this is a duplicate section. 
   bool
-  is_section_folded(Object* obj, unsigned int shndx) const;
+  is_section_folded(Relobj* obj, unsigned int shndx) const;
 
   void
   set_gc(Garbage_collection* gc)
@@ -1678,7 +1711,8 @@ class Symbol_table
 	  const elfcpp::Sym<size, big_endian>& sym,
 	  unsigned int st_shndx, bool is_ordinary,
 	  unsigned int orig_st_shndx,
-	  Object*, const char* version);
+	  Object*, const char* version,
+	  bool is_default_version);
 
   template<int size, bool big_endian>
   void
@@ -1697,7 +1731,7 @@ class Symbol_table
   // resolve.cc.
   static bool
   should_override(const Symbol*, unsigned int, elfcpp::STT, Defined,
-		  Object*, bool*, bool*);
+		  Object*, bool*, bool*, bool);
 
   // Report a problem in symbol resolution.
   static void

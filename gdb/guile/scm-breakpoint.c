@@ -1,6 +1,6 @@
 /* Scheme interface to breakpoints.
 
-   Copyright (C) 2008-2014 Free Software Foundation, Inc.
+   Copyright (C) 2008-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -22,7 +22,6 @@
 
 #include "defs.h"
 #include "value.h"
-#include "exceptions.h"
 #include "breakpoint.h"
 #include "gdbcmd.h"
 #include "gdbthread.h"
@@ -32,20 +31,54 @@
 #include "arch-utils.h"
 #include "language.h"
 #include "guile-internal.h"
+#include "location.h"
 
 /* The <gdb:breakpoint> smob.
-   N.B.: The name of this struct is known to breakpoint.h.  */
+   N.B.: The name of this struct is known to breakpoint.h.
+
+   Note: Breakpoints are added to gdb using a two step process:
+   1) Call make-breakpoint to create a <gdb:breakpoint> object.
+   2) Call register-breakpoint! to add the breakpoint to gdb.
+   It is done this way so that the constructor, make-breakpoint, doesn't have
+   any side-effects.  This means that the smob needs to store everything
+   that was passed to make-breakpoint.  */
 
 typedef struct gdbscm_breakpoint_object
 {
   /* This always appears first.  */
   gdb_smob base;
 
+  /* Non-zero if this breakpoint was created with make-breakpoint.  */
+  int is_scheme_bkpt;
+
+  /* For breakpoints created with make-breakpoint, these are the parameters
+     that were passed to make-breakpoint.  These values are not used except
+     to register the breakpoint with GDB.  */
+  struct
+  {
+    /* The string representation of the breakpoint.
+       Space for this lives in GC space.  */
+    char *location;
+
+    /* The kind of breakpoint.
+       At the moment this can only be one of bp_breakpoint, bp_watchpoint.  */
+    enum bptype type;
+
+    /* If a watchpoint, the kind of watchpoint.  */
+    enum target_hw_bp_type access_type;
+
+    /* Non-zero if the breakpoint is an "internal" breakpoint.  */
+    int is_internal;
+  } spec;
+
   /* The breakpoint number according to gdb.
+     For breakpoints created from Scheme, this has the value -1 until the
+     breakpoint is registered with gdb.
      This is recorded here because BP will be NULL when deleted.  */
   int number;
 
-  /* The gdb breakpoint object, or NULL if the breakpoint has been deleted.  */
+  /* The gdb breakpoint object, or NULL if the breakpoint has not been
+     registered yet, or has been deleted.  */
   struct breakpoint *bp;
 
   /* Backlink to our containing <gdb:breakpoint> smob.
@@ -72,22 +105,6 @@ static SCM wp_class_keyword;
 static SCM internal_keyword;
 
 /* Administrivia for breakpoint smobs.  */
-
-/* The smob "mark" function for <gdb:breakpoint>.  */
-
-static SCM
-bpscm_mark_breakpoint_smob (SCM self)
-{
-  breakpoint_smob *bp_smob = (breakpoint_smob *) SCM_SMOB_DATA (self);
-
-  /* We don't mark containing_scm here.  It is just a backlink to our
-     container, and is gc'protected until the breakpoint is deleted.  */
-
-  scm_gc_mark (bp_smob->stop);
-
-  /* Do this last.  */
-  return gdbscm_mark_gsmob (&bp_smob->base);
-}
 
 /* The smob "free" function for <gdb:breakpoint>.  */
 
@@ -135,7 +152,6 @@ bpscm_enable_state_to_string (enum enable_state enable_state)
     case bp_disabled: return "disabled";
     case bp_enabled: return "enabled";
     case bp_call_disabled: return "call_disabled";
-    case bp_permanent: return "permanent";
     default: return "unknown";
     }
 }
@@ -158,6 +174,8 @@ bpscm_print_breakpoint_smob (SCM self, SCM port, scm_print_state *pstate)
   /* Careful, the breakpoint may be invalid.  */
   if (b != NULL)
     {
+      const char *str;
+
       gdbscm_printf (port, " %s %s %s",
 		     bpscm_type_to_string (b->type),
 		     bpscm_enable_state_to_string (b->enable_state),
@@ -166,8 +184,9 @@ bpscm_print_breakpoint_smob (SCM self, SCM port, scm_print_state *pstate)
       gdbscm_printf (port, " hit:%d", b->hit_count);
       gdbscm_printf (port, " ignore:%d", b->ignore_count);
 
-      if (b->addr_string != NULL)
-	gdbscm_printf (port, " @%s", b->addr_string);
+      str = event_location_to_string (b->location);
+      if (str != NULL)
+	gdbscm_printf (port, " @%s", str);
     }
 
   scm_puts (">", port);
@@ -187,8 +206,8 @@ bpscm_make_breakpoint_smob (void)
     scm_gc_malloc (sizeof (breakpoint_smob), breakpoint_smob_name);
   SCM bp_scm;
 
+  memset (bp_smob, 0, sizeof (*bp_smob));
   bp_smob->number = -1;
-  bp_smob->bp = NULL;
   bp_smob->stop = SCM_BOOL_F;
   bp_scm = scm_new_smob (breakpoint_smob_tag, (scm_t_bits) bp_smob);
   bp_smob->containing_scm = bp_scm;
@@ -309,42 +328,117 @@ bpscm_get_valid_breakpoint_smob_arg_unsafe (SCM self, int arg_pos,
 
 /* Breakpoint methods.  */
 
-/* (create-breakpoint! string [#:type integer] [#:wp-class integer]
-    [#:internal boolean) -> <gdb:breakpoint> */
+/* (make-breakpoint string [#:type integer] [#:wp-class integer]
+    [#:internal boolean) -> <gdb:breakpoint>
+
+   The result is the <gdb:breakpoint> Scheme object.
+   The breakpoint is not available to be used yet, however.
+   It must still be added to gdb with register-breakpoint!.  */
 
 static SCM
-gdbscm_create_breakpoint_x (SCM spec_scm, SCM rest)
+gdbscm_make_breakpoint (SCM location_scm, SCM rest)
 {
   const SCM keywords[] = {
     type_keyword, wp_class_keyword, internal_keyword, SCM_BOOL_F
   };
-  char *spec;
+  char *s;
+  char *location;
   int type_arg_pos = -1, access_type_arg_pos = -1, internal_arg_pos = -1;
-  int type = bp_breakpoint;
-  int access_type = hw_write;
+  enum bptype type = bp_breakpoint;
+  enum target_hw_bp_type access_type = hw_write;
   int internal = 0;
   SCM result;
-  volatile struct gdb_exception except;
+  breakpoint_smob *bp_smob;
 
   gdbscm_parse_function_args (FUNC_NAME, SCM_ARG1, keywords, "s#iit",
-			      spec_scm, &spec, rest,
+			      location_scm, &location, rest,
 			      &type_arg_pos, &type,
 			      &access_type_arg_pos, &access_type,
 			      &internal_arg_pos, &internal);
 
   result = bpscm_make_breakpoint_smob ();
-  pending_breakpoint_scm = result;
+  bp_smob = (breakpoint_smob *) SCM_SMOB_DATA (result);
 
-  TRY_CATCH (except, RETURN_MASK_ALL)
+  s = location;
+  location = gdbscm_gc_xstrdup (s);
+  xfree (s);
+
+  switch (type)
     {
-      struct cleanup *cleanup = make_cleanup (xfree, spec);
+    case bp_breakpoint:
+      if (access_type_arg_pos > 0)
+	{
+	  gdbscm_misc_error (FUNC_NAME, access_type_arg_pos,
+			     scm_from_int (access_type),
+			     _("access type with breakpoint is not allowed"));
+	}
+      break;
+    case bp_watchpoint:
+      switch (access_type)
+	{
+	case hw_write:
+	case hw_access:
+	case hw_read:
+	  break;
+	default:
+	  gdbscm_out_of_range_error (FUNC_NAME, access_type_arg_pos,
+				     scm_from_int (access_type),
+				     _("invalid watchpoint class"));
+	}
+      break;
+    default:
+      gdbscm_out_of_range_error (FUNC_NAME, access_type_arg_pos,
+				 scm_from_int (type),
+				 _("invalid breakpoint type"));
+    }
 
-      switch (type)
+  bp_smob->is_scheme_bkpt = 1;
+  bp_smob->spec.location = location;
+  bp_smob->spec.type = type;
+  bp_smob->spec.access_type = access_type;
+  bp_smob->spec.is_internal = internal;
+
+  return result;
+}
+
+/* (register-breakpoint! <gdb:breakpoint>) -> unspecified
+
+   It is an error to register a breakpoint created outside of Guile,
+   or an already-registered breakpoint.  */
+
+static SCM
+gdbscm_register_breakpoint_x (SCM self)
+{
+  breakpoint_smob *bp_smob
+    = bpscm_get_breakpoint_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
+  struct gdb_exception except = exception_none;
+  char *location, *copy;
+  struct event_location *eloc;
+  struct cleanup *cleanup;
+
+  /* We only support registering breakpoints created with make-breakpoint.  */
+  if (!bp_smob->is_scheme_bkpt)
+    scm_misc_error (FUNC_NAME, _("not a Scheme breakpoint"), SCM_EOL);
+
+  if (bpscm_is_valid (bp_smob))
+    scm_misc_error (FUNC_NAME, _("breakpoint is already registered"), SCM_EOL);
+
+  pending_breakpoint_scm = self;
+  location = bp_smob->spec.location;
+  copy = location;
+  eloc = new_linespec_location (&copy);
+  cleanup = make_cleanup_delete_event_location (eloc);
+
+  TRY
+    {
+      int internal = bp_smob->spec.is_internal;
+
+      switch (bp_smob->spec.type)
 	{
 	case bp_breakpoint:
 	  {
 	    create_breakpoint (get_current_arch (),
-			       spec, NULL, -1, NULL,
+			       eloc, NULL, -1, NULL,
 			       0,
 			       0, bp_breakpoint,
 			       0,
@@ -355,46 +449,57 @@ gdbscm_create_breakpoint_x (SCM spec_scm, SCM rest)
 	  }
 	case bp_watchpoint:
 	  {
+	    enum target_hw_bp_type access_type = bp_smob->spec.access_type;
+
 	    if (access_type == hw_write)
-	      watch_command_wrapper (spec, 0, internal);
+	      watch_command_wrapper (location, 0, internal);
 	    else if (access_type == hw_access)
-	      awatch_command_wrapper (spec, 0, internal);
+	      awatch_command_wrapper (location, 0, internal);
 	    else if (access_type == hw_read)
-	      rwatch_command_wrapper (spec, 0, internal);
+	      rwatch_command_wrapper (location, 0, internal);
 	    else
-	      error (_("Invalid watchpoint access type"));
+	      gdb_assert_not_reached ("invalid access type");
 	    break;
 	  }
 	default:
-	  error (_("Invalid breakpoint type"));
+	  gdb_assert_not_reached ("invalid breakpoint type");
 	}
-
-      do_cleanups (cleanup);
     }
+  CATCH (ex, RETURN_MASK_ALL)
+    {
+      except = ex;
+    }
+  END_CATCH
+
   /* Ensure this gets reset, even if there's an error.  */
   pending_breakpoint_scm = SCM_BOOL_F;
   GDBSCM_HANDLE_GDB_EXCEPTION (except);
+  do_cleanups (cleanup);
 
-  return result;
+  return SCM_UNSPECIFIED;
 }
 
-/* (breakpoint-delete! <gdb:breakpoint>) -> unspecified
-   Scheme function which deletes the underlying GDB breakpoint.  This
-   triggers the breakpoint_deleted observer which will call
-   gdbscm_breakpoint_deleted; that function cleans up the Scheme sections.  */
+/* (delete-breakpoint! <gdb:breakpoint>) -> unspecified
+   Scheme function which deletes (removes) the underlying GDB breakpoint
+   from GDB's list of breakpoints.  This triggers the breakpoint_deleted
+   observer which will call gdbscm_breakpoint_deleted; that function cleans
+   up the Scheme bits.  */
 
 static SCM
-gdbscm_breakpoint_delete_x (SCM self)
+gdbscm_delete_breakpoint_x (SCM self)
 {
   breakpoint_smob *bp_smob
     = bpscm_get_valid_breakpoint_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
-  volatile struct gdb_exception except;
 
-  TRY_CATCH (except, RETURN_MASK_ALL)
+  TRY
     {
       delete_breakpoint (bp_smob->bp);
     }
-  GDBSCM_HANDLE_GDB_EXCEPTION (except);
+  CATCH (except, RETURN_MASK_ALL)
+    {
+      GDBSCM_HANDLE_GDB_EXCEPTION (except);
+    }
+  END_CATCH
 
   return SCM_UNSPECIFIED;
 }
@@ -404,7 +509,7 @@ gdbscm_breakpoint_delete_x (SCM self)
 static int
 bpscm_build_bp_list (struct breakpoint *bp, void *arg)
 {
-  SCM *list = arg;
+  SCM *list = (SCM *) arg;
   breakpoint_smob *bp_smob = bp->scm_bp_object;
 
   /* Lazily create wrappers for breakpoints created outside Scheme.  */
@@ -480,19 +585,22 @@ gdbscm_set_breakpoint_enabled_x (SCM self, SCM newvalue)
 {
   breakpoint_smob *bp_smob
     = bpscm_get_valid_breakpoint_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
-  volatile struct gdb_exception except;
 
   SCM_ASSERT_TYPE (gdbscm_is_bool (newvalue), newvalue, SCM_ARG2, FUNC_NAME,
 		   _("boolean"));
 
-  TRY_CATCH (except, RETURN_MASK_ALL)
+  TRY
     {
       if (gdbscm_is_true (newvalue))
 	enable_breakpoint (bp_smob->bp);
       else
 	disable_breakpoint (bp_smob->bp);
     }
-  GDBSCM_HANDLE_GDB_EXCEPTION (except);
+  CATCH (except, RETURN_MASK_ALL)
+    {
+      GDBSCM_HANDLE_GDB_EXCEPTION (except);
+    }
+  END_CATCH
 
   return SCM_UNSPECIFIED;
 }
@@ -515,16 +623,19 @@ gdbscm_set_breakpoint_silent_x (SCM self, SCM newvalue)
 {
   breakpoint_smob *bp_smob
     = bpscm_get_valid_breakpoint_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
-  volatile struct gdb_exception except;
 
   SCM_ASSERT_TYPE (gdbscm_is_bool (newvalue), newvalue, SCM_ARG2, FUNC_NAME,
 		   _("boolean"));
 
-  TRY_CATCH (except, RETURN_MASK_ALL)
+  TRY
     {
       breakpoint_set_silent (bp_smob->bp, gdbscm_is_true (newvalue));
     }
-  GDBSCM_HANDLE_GDB_EXCEPTION (except);
+  CATCH (except, RETURN_MASK_ALL)
+    {
+      GDBSCM_HANDLE_GDB_EXCEPTION (except);
+    }
+  END_CATCH
 
   return SCM_UNSPECIFIED;
 }
@@ -549,7 +660,6 @@ gdbscm_set_breakpoint_ignore_count_x (SCM self, SCM newvalue)
   breakpoint_smob *bp_smob
     = bpscm_get_valid_breakpoint_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
   long value;
-  volatile struct gdb_exception except;
 
   SCM_ASSERT_TYPE (scm_is_signed_integer (newvalue, LONG_MIN, LONG_MAX),
 		   newvalue, SCM_ARG2, FUNC_NAME, _("integer"));
@@ -558,11 +668,15 @@ gdbscm_set_breakpoint_ignore_count_x (SCM self, SCM newvalue)
   if (value < 0)
     value = 0;
 
-  TRY_CATCH (except, RETURN_MASK_ALL)
+  TRY
     {
       set_ignore_count (bp_smob->number, (int) value, 0);
     }
-  GDBSCM_HANDLE_GDB_EXCEPTION (except);
+  CATCH (except, RETURN_MASK_ALL)
+    {
+      GDBSCM_HANDLE_GDB_EXCEPTION (except);
+    }
+  END_CATCH
 
   return SCM_UNSPECIFIED;
 }
@@ -670,17 +784,20 @@ gdbscm_set_breakpoint_task_x (SCM self, SCM newvalue)
     = bpscm_get_valid_breakpoint_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
   long id;
   int valid_id = 0;
-  volatile struct gdb_exception except;
 
   if (scm_is_signed_integer (newvalue, LONG_MIN, LONG_MAX))
     {
       id = scm_to_long (newvalue);
 
-      TRY_CATCH (except, RETURN_MASK_ALL)
+      TRY
 	{
 	  valid_id = valid_task_id (id);
 	}
-      GDBSCM_HANDLE_GDB_EXCEPTION (except);
+      CATCH (except, RETURN_MASK_ALL)
+	{
+	  GDBSCM_HANDLE_GDB_EXCEPTION (except);
+	}
+      END_CATCH
 
       if (! valid_id)
 	{
@@ -693,11 +810,15 @@ gdbscm_set_breakpoint_task_x (SCM self, SCM newvalue)
   else
     SCM_ASSERT_TYPE (0, newvalue, SCM_ARG2, FUNC_NAME, _("integer or #f"));
 
-  TRY_CATCH (except, RETURN_MASK_ALL)
+  TRY
     {
       breakpoint_set_task (bp_smob->bp, id);
     }
-  GDBSCM_HANDLE_GDB_EXCEPTION (except);
+  CATCH (except, RETURN_MASK_ALL)
+    {
+      GDBSCM_HANDLE_GDB_EXCEPTION (except);
+    }
+  END_CATCH
 
   return SCM_UNSPECIFIED;
 }
@@ -709,12 +830,12 @@ gdbscm_breakpoint_location (SCM self)
 {
   breakpoint_smob *bp_smob
     = bpscm_get_valid_breakpoint_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
-  char *str;
+  const char *str;
 
   if (bp_smob->bp->type != bp_breakpoint)
     return SCM_BOOL_F;
 
-  str = bp_smob->bp->addr_string;
+  str = event_location_to_string (bp_smob->bp->location);
   if (! str)
     str = "";
 
@@ -770,7 +891,7 @@ gdbscm_set_breakpoint_condition_x (SCM self, SCM newvalue)
   breakpoint_smob *bp_smob
     = bpscm_get_valid_breakpoint_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
   char *exp;
-  volatile struct gdb_exception except;
+  struct gdb_exception except = exception_none;
 
   SCM_ASSERT_TYPE (scm_is_string (newvalue) || gdbscm_is_false (newvalue),
 		   newvalue, SCM_ARG2, FUNC_NAME,
@@ -781,10 +902,16 @@ gdbscm_set_breakpoint_condition_x (SCM self, SCM newvalue)
   else
     exp = gdbscm_scm_to_c_string (newvalue);
 
-  TRY_CATCH (except, RETURN_MASK_ALL)
+  TRY
     {
       set_breakpoint_condition (bp_smob->bp, exp ? exp : "", 0);
     }
+  CATCH (ex, RETURN_MASK_ALL)
+    {
+      except = ex;
+    }
+  END_CATCH
+
   xfree (exp);
   GDBSCM_HANDLE_GDB_EXCEPTION (except);
 
@@ -829,7 +956,7 @@ gdbscm_set_breakpoint_stop_x (SCM self, SCM newvalue)
 			" this breakpoint."),
 		      ext_lang_capitalized_name (extlang));
 
-      scm_dynwind_begin (0);
+      scm_dynwind_begin ((scm_t_dynwind_flags) 0);
       gdbscm_dynwind_xfree (error_text);
       gdbscm_out_of_range_error (FUNC_NAME, SCM_ARG1, self, error_text);
       /* The following line, while unnecessary, is present for completeness
@@ -851,7 +978,6 @@ gdbscm_breakpoint_commands (SCM self)
     = bpscm_get_valid_breakpoint_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
   struct breakpoint *bp;
   long length;
-  volatile struct gdb_exception except;
   struct ui_file *string_file;
   struct cleanup *chain;
   SCM result;
@@ -866,16 +992,17 @@ gdbscm_breakpoint_commands (SCM self)
   chain = make_cleanup_ui_file_delete (string_file);
 
   ui_out_redirect (current_uiout, string_file);
-  TRY_CATCH (except, RETURN_MASK_ALL)
+  TRY
     {
       print_command_lines (current_uiout, breakpoint_commands (bp), 0);
     }
   ui_out_redirect (current_uiout, NULL);
-  if (except.reason < 0)
+  CATCH (except, RETURN_MASK_ALL)
     {
       do_cleanups (chain);
       gdbscm_throw_gdb_exception (except);
     }
+  END_CATCH
 
   cmdstr = ui_file_xstrdup (string_file, &length);
   make_cleanup (xfree, cmdstr);
@@ -1015,6 +1142,8 @@ bpscm_breakpoint_deleted (struct breakpoint *b)
       if (bp_smob)
 	{
 	  bp_smob->bp = NULL;
+	  bp_smob->number = -1;
+	  bp_smob->stop = SCM_BOOL_F;
 	  scm_gc_unprotect_object (bp_smob->containing_scm);
 	}
     }
@@ -1040,131 +1169,151 @@ static const scheme_integer_constant breakpoint_integer_constants[] =
 
 static const scheme_function breakpoint_functions[] =
 {
-  { "create-breakpoint!", 1, 0, 1, gdbscm_create_breakpoint_x,
+  { "make-breakpoint", 1, 0, 1, as_a_scm_t_subr (gdbscm_make_breakpoint),
     "\
-Create and install a GDB breakpoint object.\n\
+Create a GDB breakpoint object.\n\
 \n\
   Arguments:\n\
-     location [#:type <type>] [#:wp-class <wp-class>] [#:internal <bool>]" },
+    location [#:type <type>] [#:wp-class <wp-class>] [#:internal <bool>]\n\
+  Returns:\n\
+    <gdb:breakpoint object" },
 
-  { "breakpoint-delete!", 1, 0, 0, gdbscm_breakpoint_delete_x,
+  { "register-breakpoint!", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_register_breakpoint_x),
+    "\
+Register a <gdb:breakpoint> object with GDB." },
+
+  { "delete-breakpoint!", 1, 0, 0, as_a_scm_t_subr (gdbscm_delete_breakpoint_x),
     "\
 Delete the breakpoint from GDB." },
 
-  { "breakpoints", 0, 0, 0, gdbscm_breakpoints,
+  { "breakpoints", 0, 0, 0, as_a_scm_t_subr (gdbscm_breakpoints),
     "\
 Return a list of all GDB breakpoints.\n\
 \n\
   Arguments: none" },
 
-  { "breakpoint?", 1, 0, 0, gdbscm_breakpoint_p,
+  { "breakpoint?", 1, 0, 0, as_a_scm_t_subr (gdbscm_breakpoint_p),
     "\
 Return #t if the object is a <gdb:breakpoint> object." },
 
-  { "breakpoint-valid?", 1, 0, 0, gdbscm_breakpoint_valid_p,
+  { "breakpoint-valid?", 1, 0, 0, as_a_scm_t_subr (gdbscm_breakpoint_valid_p),
     "\
 Return #t if the breakpoint has not been deleted from GDB." },
 
-  { "breakpoint-number", 1, 0, 0, gdbscm_breakpoint_number,
+  { "breakpoint-number", 1, 0, 0, as_a_scm_t_subr (gdbscm_breakpoint_number),
     "\
 Return the breakpoint's number." },
 
-  { "breakpoint-type", 1, 0, 0, gdbscm_breakpoint_type,
+  { "breakpoint-type", 1, 0, 0, as_a_scm_t_subr (gdbscm_breakpoint_type),
     "\
 Return the type of the breakpoint." },
 
-  { "breakpoint-visible?", 1, 0, 0, gdbscm_breakpoint_visible,
+  { "breakpoint-visible?", 1, 0, 0, as_a_scm_t_subr (gdbscm_breakpoint_visible),
     "\
 Return #t if the breakpoint is visible to the user." },
 
-  { "breakpoint-location", 1, 0, 0, gdbscm_breakpoint_location,
+  { "breakpoint-location", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_breakpoint_location),
     "\
 Return the location of the breakpoint as specified by the user." },
 
-  { "breakpoint-expression", 1, 0, 0, gdbscm_breakpoint_expression,
+  { "breakpoint-expression", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_breakpoint_expression),
     "\
 Return the expression of the breakpoint as specified by the user.\n\
 Valid for watchpoints only, returns #f for non-watchpoints." },
 
-  { "breakpoint-enabled?", 1, 0, 0, gdbscm_breakpoint_enabled_p,
+  { "breakpoint-enabled?", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_breakpoint_enabled_p),
     "\
 Return #t if the breakpoint is enabled." },
 
-  { "set-breakpoint-enabled!", 2, 0, 0, gdbscm_set_breakpoint_enabled_x,
+  { "set-breakpoint-enabled!", 2, 0, 0,
+    as_a_scm_t_subr (gdbscm_set_breakpoint_enabled_x),
     "\
 Set the breakpoint's enabled state.\n\
 \n\
-  Arguments: <gdb:breakpoint boolean" },
+  Arguments: <gdb:breakpoint> boolean" },
 
-  { "breakpoint-silent?", 1, 0, 0, gdbscm_breakpoint_silent_p,
+  { "breakpoint-silent?", 1, 0, 0, as_a_scm_t_subr (gdbscm_breakpoint_silent_p),
     "\
 Return #t if the breakpoint is silent." },
 
-  { "set-breakpoint-silent!", 2, 0, 0, gdbscm_set_breakpoint_silent_x,
+  { "set-breakpoint-silent!", 2, 0, 0,
+    as_a_scm_t_subr (gdbscm_set_breakpoint_silent_x),
     "\
 Set the breakpoint's silent state.\n\
 \n\
   Arguments: <gdb:breakpoint> boolean" },
 
-  { "breakpoint-ignore-count", 1, 0, 0, gdbscm_breakpoint_ignore_count,
+  { "breakpoint-ignore-count", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_breakpoint_ignore_count),
     "\
 Return the breakpoint's \"ignore\" count." },
 
   { "set-breakpoint-ignore-count!", 2, 0, 0,
-    gdbscm_set_breakpoint_ignore_count_x,
+    as_a_scm_t_subr (gdbscm_set_breakpoint_ignore_count_x),
     "\
 Set the breakpoint's \"ignore\" count.\n\
 \n\
   Arguments: <gdb:breakpoint> count" },
 
-  { "breakpoint-hit-count", 1, 0, 0, gdbscm_breakpoint_hit_count,
+  { "breakpoint-hit-count", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_breakpoint_hit_count),
     "\
 Return the breakpoint's \"hit\" count." },
 
-  { "set-breakpoint-hit-count!", 2, 0, 0, gdbscm_set_breakpoint_hit_count_x,
+  { "set-breakpoint-hit-count!", 2, 0, 0,
+    as_a_scm_t_subr (gdbscm_set_breakpoint_hit_count_x),
     "\
 Set the breakpoint's \"hit\" count.  The value must be zero.\n\
 \n\
   Arguments: <gdb:breakpoint> 0" },
 
-  { "breakpoint-thread", 1, 0, 0, gdbscm_breakpoint_thread,
+  { "breakpoint-thread", 1, 0, 0, as_a_scm_t_subr (gdbscm_breakpoint_thread),
     "\
 Return the breakpoint's thread id or #f if there isn't one." },
 
-  { "set-breakpoint-thread!", 2, 0, 0, gdbscm_set_breakpoint_thread_x,
+  { "set-breakpoint-thread!", 2, 0, 0,
+    as_a_scm_t_subr (gdbscm_set_breakpoint_thread_x),
     "\
 Set the thread id for this breakpoint.\n\
 \n\
   Arguments: <gdb:breakpoint> thread-id" },
 
-  { "breakpoint-task", 1, 0, 0, gdbscm_breakpoint_task,
+  { "breakpoint-task", 1, 0, 0, as_a_scm_t_subr (gdbscm_breakpoint_task),
     "\
 Return the breakpoint's Ada task-id or #f if there isn't one." },
 
-  { "set-breakpoint-task!", 2, 0, 0, gdbscm_set_breakpoint_task_x,
+  { "set-breakpoint-task!", 2, 0, 0,
+    as_a_scm_t_subr (gdbscm_set_breakpoint_task_x),
     "\
 Set the breakpoint's Ada task-id.\n\
 \n\
   Arguments: <gdb:breakpoint> task-id" },
 
-  { "breakpoint-condition", 1, 0, 0, gdbscm_breakpoint_condition,
+  { "breakpoint-condition", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_breakpoint_condition),
     "\
 Return the breakpoint's condition as specified by the user.\n\
 Return #f if there isn't one." },
 
-  { "set-breakpoint-condition!", 2, 0, 0, gdbscm_set_breakpoint_condition_x,
+  { "set-breakpoint-condition!", 2, 0, 0,
+    as_a_scm_t_subr (gdbscm_set_breakpoint_condition_x),
     "\
 Set the breakpoint's condition.\n\
 \n\
   Arguments: <gdb:breakpoint> condition\n\
     condition: a string" },
 
-  { "breakpoint-stop", 1, 0, 0, gdbscm_breakpoint_stop,
+  { "breakpoint-stop", 1, 0, 0, as_a_scm_t_subr (gdbscm_breakpoint_stop),
     "\
 Return the breakpoint's stop predicate.\n\
 Return #f if there isn't one." },
 
-  { "set-breakpoint-stop!", 2, 0, 0, gdbscm_set_breakpoint_stop_x,
+  { "set-breakpoint-stop!", 2, 0, 0,
+    as_a_scm_t_subr (gdbscm_set_breakpoint_stop_x),
     "\
 Set the breakpoint's stop predicate.\n\
 \n\
@@ -1172,7 +1321,8 @@ Set the breakpoint's stop predicate.\n\
     procedure: A procedure of one argument, the breakpoint.\n\
       Its result is true if program execution should stop." },
 
-  { "breakpoint-commands", 1, 0, 0, gdbscm_breakpoint_commands,
+  { "breakpoint-commands", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_breakpoint_commands),
     "\
 Return the breakpoint's commands." },
 
@@ -1184,7 +1334,6 @@ gdbscm_initialize_breakpoints (void)
 {
   breakpoint_smob_tag
     = gdbscm_make_smob_type (breakpoint_smob_name, sizeof (breakpoint_smob));
-  scm_set_smob_mark (breakpoint_smob_tag, bpscm_mark_breakpoint_smob);
   scm_set_smob_free (breakpoint_smob_tag, bpscm_free_breakpoint_smob);
   scm_set_smob_print (breakpoint_smob_tag, bpscm_print_breakpoint_smob);
 

@@ -1,6 +1,6 @@
 // dwarf_reader.cc -- parse dwarf2/3 debug information
 
-// Copyright (C) 2007-2014 Free Software Foundation, Inc.
+// Copyright (C) 2007-2015 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -505,13 +505,11 @@ Dwarf_pubnames_table::read_section(Relobj* object, const unsigned char* symtab,
       if (strcmp(section_name_suffix, name) == 0)
         {
           shndx = i;
-          this->output_section_offset_ = object->output_section_offset(i);
           break;
         }
       else if (strcmp(section_name_suffix, gnu_name) == 0)
         {
           shndx = i;
-          this->output_section_offset_ = object->output_section_offset(i);
           this->is_gnu_style_ = true;
           break;
         }
@@ -560,11 +558,6 @@ Dwarf_pubnames_table::read_header(off_t offset)
   // Make sure we have actually read the section.
   gold_assert(this->buffer_ != NULL);
 
-  // Correct the offset.  For incremental update links, we have a
-  // relocated offset that is relative to the output section, but
-  // here we need an offset relative to the input section.
-  offset -= this->output_section_offset_;
-
   if (offset < 0 || offset + 14 >= this->buffer_end_ - this->buffer_)
     return false;
 
@@ -586,6 +579,12 @@ Dwarf_pubnames_table::read_header(off_t offset)
       this->offset_size_ = 4;
     }
   this->end_of_table_ = pinfo + unit_length;
+
+  // If unit_length is too big, maybe we should reject the whole table,
+  // but in cases we know about, it seems OK to assume that the table
+  // is valid through the actual end of the section.
+  if (this->end_of_table_ > this->buffer_end_)
+    this->end_of_table_ = this->buffer_end_;
 
   // Check the version.
   unsigned int version = this->dwinfo_->read_from_pointer<16>(pinfo);
@@ -2206,13 +2205,33 @@ Sized_dwarf_line_info<size, big_endian>::do_addr2line(
     return "";
 
   std::string result = this->format_file_lineno(*it);
+  gold_debug(DEBUG_LOCATION, "do_addr2line: canonical result: %s",
+	     result.c_str());
   if (other_lines != NULL)
-    for (++it; it != offsets->end() && it->offset == offset; ++it)
-      {
-        if (it->line_num == -1)
-          continue;  // The end of a previous function.
-        other_lines->push_back(this->format_file_lineno(*it));
-      }
+    {
+      unsigned int last_file_num = it->file_num;
+      int last_line_num = it->line_num;
+      // Return up to 4 more locations from the beginning of the function
+      // for fuzzy matching.
+      for (++it; it != offsets->end(); ++it)
+	{
+	  if (it->offset == offset && it->line_num == -1)
+	    continue;  // The end of a previous function.
+	  if (it->line_num == -1)
+	    break;  // The end of the current function.
+	  if (it->file_num != last_file_num || it->line_num != last_line_num)
+	    {
+	      other_lines->push_back(this->format_file_lineno(*it));
+	      gold_debug(DEBUG_LOCATION, "do_addr2line: other: %s",
+			 other_lines->back().c_str());
+	      last_file_num = it->file_num;
+	      last_line_num = it->line_num;
+	    }
+	  if (it->offset > offset && other_lines->size() >= 4)
+	    break;
+	}
+    }
+
   return result;
 }
 

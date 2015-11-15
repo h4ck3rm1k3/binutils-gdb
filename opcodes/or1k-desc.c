@@ -2,7 +2,7 @@
 
 THIS FILE IS MACHINE GENERATED WITH CGEN.
 
-Copyright 1996-2010 Free Software Foundation, Inc.
+Copyright (C) 1996-2015 Free Software Foundation, Inc.
 
 This file is part of the GNU Binutils and/or GDB, the GNU debugger.
 
@@ -919,6 +919,8 @@ const CGEN_HW_ENTRY or1k_cgen_hw_table[] =
   { "h-simm16", HW_H_SIMM16, CGEN_ASM_NONE, 0, { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } } },
   { "h-uimm16", HW_H_UIMM16, CGEN_ASM_NONE, 0, { 0, { { { (1<<MACH_BASE), 0 } } } } },
   { "h-uimm6", HW_H_UIMM6, CGEN_ASM_NONE, 0, { 0, { { { (1<<MACH_BASE), 0 } } } } },
+  { "h-atomic-reserve", HW_H_ATOMIC_RESERVE, CGEN_ASM_NONE, 0, { 0, { { { (1<<MACH_BASE), 0 } } } } },
+  { "h-atomic-address", HW_H_ATOMIC_ADDRESS, CGEN_ASM_NONE, 0, { 0, { { { (1<<MACH_BASE), 0 } } } } },
   { 0, 0, CGEN_ASM_NONE, 0, { 0, { { { (1<<MACH_BASE), 0 } } } } }
 };
 
@@ -950,6 +952,7 @@ const CGEN_IFLD or1k_cgen_ifld_table[] =
   { OR1K_F_RESV_25_10, "f-resv-25-10", 0, 32, 25, 10, { 0|A(RESERVED), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
   { OR1K_F_RESV_25_5, "f-resv-25-5", 0, 32, 25, 5, { 0|A(RESERVED), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
   { OR1K_F_RESV_23_8, "f-resv-23-8", 0, 32, 23, 8, { 0|A(RESERVED), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
+  { OR1K_F_RESV_20_21, "f-resv-20-21", 0, 32, 20, 21, { 0|A(RESERVED), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
   { OR1K_F_RESV_20_5, "f-resv-20-5", 0, 32, 20, 5, { 0|A(RESERVED), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
   { OR1K_F_RESV_20_4, "f-resv-20-4", 0, 32, 20, 4, { 0|A(RESERVED), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
   { OR1K_F_RESV_15_8, "f-resv-15-8", 0, 32, 15, 8, { 0|A(RESERVED), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
@@ -1059,65 +1062,73 @@ const CGEN_OPERAND or1k_cgen_operand_table[] =
   { "mac-maclo", OR1K_OPERAND_MAC_MACLO, HW_H_MAC_MACLO, 0, 0,
     { 0, { (const PTR) 0 } },
     { 0|A(SEM_ONLY), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
+/* atomic-reserve: atomic reserve flag */
+  { "atomic-reserve", OR1K_OPERAND_ATOMIC_RESERVE, HW_H_ATOMIC_RESERVE, 0, 0,
+    { 0, { (const PTR) 0 } },
+    { 0|A(SEM_ONLY), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
+/* atomic-address: atomic address */
+  { "atomic-address", OR1K_OPERAND_ATOMIC_ADDRESS, HW_H_ATOMIC_ADDRESS, 0, 0,
+    { 0, { (const PTR) 0 } },
+    { 0|A(SEM_ONLY), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* uimm6: uimm6 */
   { "uimm6", OR1K_OPERAND_UIMM6, HW_H_UIMM6, 5, 6,
     { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_UIMM6] } },
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* rD: destination register */
   { "rD", OR1K_OPERAND_RD, HW_H_GPR, 25, 5,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } },
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* rA: source register A */
   { "rA", OR1K_OPERAND_RA, HW_H_GPR, 20, 5,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R2] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R2] } },
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* rB: source register B */
   { "rB", OR1K_OPERAND_RB, HW_H_GPR, 15, 5,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R3] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R3] } },
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* disp26: pc-rel 26 bit */
   { "disp26", OR1K_OPERAND_DISP26, HW_H_IADDR, 25, 26,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_DISP26] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_DISP26] } },
     { 0|A(PCREL_ADDR), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* simm16: 16-bit signed immediate */
   { "simm16", OR1K_OPERAND_SIMM16, HW_H_SIMM16, 15, 16,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_SIMM16] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_SIMM16] } },
     { 0|A(SIGN_OPT), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* uimm16: 16-bit unsigned immediate */
   { "uimm16", OR1K_OPERAND_UIMM16, HW_H_UIMM16, 15, 16,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_UIMM16] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_UIMM16] } },
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* simm16-split: split 16-bit signed immediate */
   { "simm16-split", OR1K_OPERAND_SIMM16_SPLIT, HW_H_SIMM16, 10, 16,
-    { 2, { (const PTR) &OR1K_F_SIMM16_SPLIT_MULTI_IFIELD[0] } }, 
+    { 2, { (const PTR) &OR1K_F_SIMM16_SPLIT_MULTI_IFIELD[0] } },
     { 0|A(SIGN_OPT)|A(VIRTUAL), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* uimm16-split: split 16-bit unsigned immediate */
   { "uimm16-split", OR1K_OPERAND_UIMM16_SPLIT, HW_H_UIMM16, 10, 16,
-    { 2, { (const PTR) &OR1K_F_UIMM16_SPLIT_MULTI_IFIELD[0] } }, 
+    { 2, { (const PTR) &OR1K_F_UIMM16_SPLIT_MULTI_IFIELD[0] } },
     { 0|A(VIRTUAL), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* rDSF: destination register (single floating point mode) */
   { "rDSF", OR1K_OPERAND_RDSF, HW_H_FSR, 25, 5,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } },
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* rASF: source register A (single floating point mode) */
   { "rASF", OR1K_OPERAND_RASF, HW_H_FSR, 20, 5,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R2] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R2] } },
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* rBSF: source register B (single floating point mode) */
   { "rBSF", OR1K_OPERAND_RBSF, HW_H_FSR, 15, 5,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R3] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R3] } },
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* rDDF: destination register (double floating point mode) */
   { "rDDF", OR1K_OPERAND_RDDF, HW_H_FDR, 25, 5,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } },
     { 0, { { { (1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* rADF: source register A (double floating point mode) */
   { "rADF", OR1K_OPERAND_RADF, HW_H_FDR, 25, 5,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } },
     { 0, { { { (1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* rBDF: source register B (double floating point mode) */
   { "rBDF", OR1K_OPERAND_RBDF, HW_H_FDR, 25, 5,
-    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } }, 
+    { 0, { (const PTR) &or1k_cgen_ifld_table[OR1K_F_R1] } },
     { 0, { { { (1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }  },
 /* sentinel */
   { 0, 0, 0, 0, 0,
@@ -1179,6 +1190,21 @@ static const CGEN_IBASE or1k_cgen_insn_table[MAX_INSNS] =
     OR1K_INSN_L_SYS, "l-sys", "l.sys", 32,
     { 0|A(NOT_IN_DELAY_SLOT), { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }
   },
+/* l.msync */
+  {
+    OR1K_INSN_L_MSYNC, "l-msync", "l.msync", 32,
+    { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }
+  },
+/* l.psync */
+  {
+    OR1K_INSN_L_PSYNC, "l-psync", "l.psync", 32,
+    { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }
+  },
+/* l.csync */
+  {
+    OR1K_INSN_L_CSYNC, "l-csync", "l.csync", 32,
+    { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }
+  },
 /* l.rfe */
   {
     OR1K_INSN_L_RFE, "l-rfe", "l.rfe", 32,
@@ -1224,6 +1250,11 @@ static const CGEN_IBASE or1k_cgen_insn_table[MAX_INSNS] =
     OR1K_INSN_L_LWS, "l-lws", "l.lws", 32,
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }
   },
+/* l.lwa $rD,${simm16}($rA) */
+  {
+    OR1K_INSN_L_LWA, "l-lwa", "l.lwa", 32,
+    { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }
+  },
 /* l.lbz $rD,${simm16}($rA) */
   {
     OR1K_INSN_L_LBZ, "l-lbz", "l.lbz", 32,
@@ -1257,6 +1288,11 @@ static const CGEN_IBASE or1k_cgen_insn_table[MAX_INSNS] =
 /* l.sh ${simm16-split}($rA),$rB */
   {
     OR1K_INSN_L_SH, "l-sh", "l.sh", 32,
+    { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }
+  },
+/* l.swa ${simm16-split}($rA),$rB */
+  {
+    OR1K_INSN_L_SWA, "l-swa", "l.swa", 32,
     { 0, { { { (1<<MACH_OR32)|(1<<MACH_OR32ND)|(1<<MACH_OR64)|(1<<MACH_OR64ND), 0 } } } }
   },
 /* l.sll $rD,$rA,$rB */
@@ -2015,7 +2051,7 @@ or1k_cgen_cpu_open (enum cgen_cpu_open_arg arg_type, ...)
 
   /* Default to not allowing signed overflow.  */
   cd->signed_overflow_ok_p = 0;
-  
+
   return (CGEN_CPU_DESC) cd;
 }
 
@@ -2055,7 +2091,7 @@ or1k_cgen_cpu_close (CGEN_CPU_DESC cd)
       for (i = 0; i < cd->insn_table.num_init_entries; ++i, ++insns)
 	if (CGEN_INSN_RX (insns))
 	  regfree (CGEN_INSN_RX (insns));
-    }  
+    }
 
   if (cd->macro_insn_table.init_entries)
     free ((CGEN_INSN *) cd->macro_insn_table.init_entries);

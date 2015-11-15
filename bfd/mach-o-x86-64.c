@@ -1,5 +1,5 @@
 /* Intel x86-64 Mach-O support for BFD.
-   Copyright (C) 2010-2014 Free Software Foundation, Inc.
+   Copyright (C) 2010-2015 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -353,7 +353,7 @@ const mach_o_segment_name_xlat mach_o_x86_64_segsec_names_xlat[] =
 #define bfd_mach_o_tgt_seg_table mach_o_x86_64_segsec_names_xlat
 #define bfd_mach_o_section_type_valid_for_tgt bfd_mach_o_section_type_valid_for_x86_64
 
-#define TARGET_NAME 		mach_o_x86_64_vec
+#define TARGET_NAME 		x86_64_mach_o_vec
 #define TARGET_STRING 		"mach-o-x86-64"
 #define TARGET_ARCHITECTURE	bfd_arch_i386
 #define TARGET_PAGESIZE		4096

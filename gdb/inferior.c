@@ -1,6 +1,6 @@
 /* Multi-process control for GDB, the GNU debugger.
 
-   Copyright (C) 2008-2014 Free Software Foundation, Inc.
+   Copyright (C) 2008-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -74,7 +74,7 @@ set_current_inferior (struct inferior *inf)
 static void
 restore_inferior (void *arg)
 {
-  struct inferior *saved_inferior = arg;
+  struct inferior *saved_inferior = (struct inferior *) arg;
 
   set_current_inferior (saved_inferior);
 }
@@ -101,7 +101,7 @@ free_inferior (struct inferior *inf)
   xfree (inf->terminal);
   free_environ (inf->environment);
   target_desc_info_free (inf->tdesc_info);
-  xfree (inf->private);
+  xfree (inf->priv);
   xfree (inf);
 }
 
@@ -128,7 +128,7 @@ add_inferior_silent (int pid)
 {
   struct inferior *inf;
 
-  inf = xmalloc (sizeof (*inf));
+  inf = XNEW (struct inferior);
   memset (inf, 0, sizeof (*inf));
   inf->pid = pid;
 
@@ -171,7 +171,8 @@ struct delete_thread_of_inferior_arg
 static int
 delete_thread_of_inferior (struct thread_info *tp, void *data)
 {
-  struct delete_thread_of_inferior_arg *arg = data;
+  struct delete_thread_of_inferior_arg *arg
+    = (struct delete_thread_of_inferior_arg *) data;
 
   if (ptid_get_pid (tp->ptid) == arg->pid)
     {
@@ -184,11 +185,8 @@ delete_thread_of_inferior (struct thread_info *tp, void *data)
   return 0;
 }
 
-/* If SILENT then be quiet -- don't announce a inferior death, or the
-   exit of its threads.  */
-
 void
-delete_inferior_1 (struct inferior *todel, int silent)
+delete_inferior (struct inferior *todel)
 {
   struct inferior *inf, *infprev;
   struct delete_thread_of_inferior_arg arg;
@@ -203,7 +201,7 @@ delete_inferior_1 (struct inferior *todel, int silent)
     return;
 
   arg.pid = inf->pid;
-  arg.silent = silent;
+  arg.silent = 1;
 
   iterate_over_threads (delete_thread_of_inferior, &arg);
 
@@ -214,28 +212,12 @@ delete_inferior_1 (struct inferior *todel, int silent)
 
   observer_notify_inferior_removed (inf);
 
+  /* If this program space is rendered useless, remove it. */
+  if (program_space_empty_p (inf->pspace))
+    delete_program_space (inf->pspace);
+
   free_inferior (inf);
 }
-
-void
-delete_inferior (int pid)
-{
-  struct inferior *inf = find_inferior_pid (pid);
-
-  delete_inferior_1 (inf, 0);
-
-  if (print_inferior_events)
-    printf_unfiltered (_("[Inferior %d exited]\n"), pid);
-}
-
-void
-delete_inferior_silent (int pid)
-{
-  struct inferior *inf = find_inferior_pid (pid);
-
-  delete_inferior_1 (inf, 1);
-}
-
 
 /* If SILENT then be quiet -- don't announce a inferior exit, or the
    exit of its threads.  */
@@ -275,8 +257,6 @@ exit_inferior_1 (struct inferior *inftoex, int silent)
       inf->vfork_child = NULL;
     }
 
-  inf->has_exit_code = 0;
-  inf->exit_code = 0;
   inf->pending_detach = 0;
 }
 
@@ -312,7 +292,7 @@ detach_inferior (int pid)
 {
   struct inferior *inf = find_inferior_pid (pid);
 
-  exit_inferior_1 (inf, 1);
+  exit_inferior_1 (inf, 0);
 
   if (print_inferior_events)
     printf_unfiltered (_("[Inferior %d detached]\n"), pid);
@@ -322,6 +302,8 @@ void
 inferior_appeared (struct inferior *inf, int pid)
 {
   inf->pid = pid;
+  inf->has_exit_code = 0;
+  inf->exit_code = 0;
 
   observer_notify_inferior_appeared (inf);
 }
@@ -367,12 +349,23 @@ find_inferior_pid (int pid)
   return NULL;
 }
 
-/* Find an inferior bound to PSPACE.  */
+/* See inferior.h */
+
+struct inferior *
+find_inferior_ptid (ptid_t ptid)
+{
+  return find_inferior_pid (ptid_get_pid (ptid));
+}
+
+/* See inferior.h.  */
 
 struct inferior *
 find_inferior_for_program_space (struct program_space *pspace)
 {
-  struct inferior *inf;
+  struct inferior *inf = current_inferior ();
+
+  if (inf->pspace == pspace)
+    return inf;
 
   for (inf = inferior_list; inf != NULL; inf = inf->next)
     {
@@ -475,8 +468,8 @@ have_live_inferiors (void)
   return inf != NULL;
 }
 
-/* Prune away automatically added program spaces that aren't required
-   anymore.  */
+/* Prune away any unused inferiors, and then prune away no longer used
+   program spaces.  */
 
 void
 prune_inferiors (void)
@@ -498,11 +491,9 @@ prune_inferiors (void)
 	}
 
       *ss_link = ss->next;
-      delete_inferior_1 (ss, 1);
+      delete_inferior (ss);
       ss = *ss_link;
     }
-
-  prune_program_spaces ();
 }
 
 /* Simply returns the count of inferiors.  */
@@ -635,6 +626,11 @@ detach_inferior_command (char *args, int from_tty)
 	}
 
       pid = gdb_inferior_id_to_pid (num);
+      if (pid == 0)
+	{
+	  warning (_("Inferior ID %d is not running."), num);
+	  continue;
+	}
 
       tp = any_thread_of_process (pid);
       if (!tp)
@@ -671,6 +667,11 @@ kill_inferior_command (char *args, int from_tty)
 	}
 
       pid = gdb_inferior_id_to_pid (num);
+      if (pid == 0)
+	{
+	  warning (_("Inferior ID %d is not running."), num);
+	  continue;
+	}
 
       tp = any_thread_of_process (pid);
       if (!tp)
@@ -786,7 +787,7 @@ remove_inferior_command (char *args, int from_tty)
 	  continue;
 	}
 
-      delete_inferior_1 (inf, 1);
+      delete_inferior (inf);
     }
 }
 

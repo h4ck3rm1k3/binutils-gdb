@@ -1,5 +1,5 @@
 /* BFD back-end for IBM RS/6000 "XCOFF64" files.
-   Copyright (C) 2000-2014 Free Software Foundation, Inc.
+   Copyright (C) 2000-2015 Free Software Foundation, Inc.
    Written Clinton Popetz.
    Contributed by Cygnus Support.
 
@@ -1277,7 +1277,7 @@ xcoff64_ppc_relocate_section (bfd *output_bfd,
 		}
 	      else
 		{
-		  BFD_ASSERT (info->relocatable
+		  BFD_ASSERT (bfd_link_relocatable (info)
 			      || (h->flags & XCOFF_DEF_DYNAMIC) != 0
 			      || (h->flags & XCOFF_IMPORT) != 0);
 		}
@@ -2614,7 +2614,7 @@ static const struct xcoff_backend_data_rec bfd_xcoff_backend_data =
   };
 
 /* The transfer vector that leads the outside world to all of the above.  */
-const bfd_target rs6000coff64_vec =
+const bfd_target rs6000_xcoff64_vec =
   {
     "aixcoff64-rs6000",
     bfd_target_xcoff_flavour,
@@ -2712,12 +2712,12 @@ const bfd_target rs6000coff64_vec =
     coff_make_empty_symbol,
     coff_print_symbol,
     coff_get_symbol_info,
+    coff_get_symbol_version_string,
     _bfd_xcoff_is_local_label_name,
     coff_bfd_is_target_special_symbol,
     coff_get_lineno,
     coff_find_nearest_line,
-    _bfd_generic_find_nearest_line_discriminator,
-    _bfd_generic_find_line,
+    coff_find_line,
     coff_find_inliner_info,
     coff_bfd_make_debug_symbol,
     _bfd_generic_read_minisymbols,
@@ -2738,7 +2738,6 @@ const bfd_target rs6000coff64_vec =
     bfd_generic_get_relocated_section_contents,
     bfd_generic_relax_section,
     _bfd_xcoff_bfd_link_hash_table_create,
-    _bfd_generic_link_hash_table_free,
     _bfd_xcoff_bfd_link_add_symbols,
     _bfd_generic_link_just_syms,
     _bfd_generic_copy_link_hash_symbol_type,
@@ -2873,7 +2872,7 @@ static const struct xcoff_backend_data_rec bfd_xcoff_aix5_backend_data =
   };
 
 /* The transfer vector that leads the outside world to all of the above.  */
-const bfd_target aix5coff64_vec =
+const bfd_target rs6000_xcoff64_aix_vec =
   {
     "aix5coff64-rs6000",
     bfd_target_xcoff_flavour,
@@ -2971,12 +2970,12 @@ const bfd_target aix5coff64_vec =
     coff_make_empty_symbol,
     coff_print_symbol,
     coff_get_symbol_info,
+    coff_get_symbol_version_string,
     _bfd_xcoff_is_local_label_name,
     coff_bfd_is_target_special_symbol,
     coff_get_lineno,
     coff_find_nearest_line,
-    _bfd_generic_find_nearest_line_discriminator,
-    _bfd_generic_find_line,
+    coff_find_line,
     coff_find_inliner_info,
     coff_bfd_make_debug_symbol,
     _bfd_generic_read_minisymbols,
@@ -2997,7 +2996,6 @@ const bfd_target aix5coff64_vec =
     bfd_generic_get_relocated_section_contents,
     bfd_generic_relax_section,
     _bfd_xcoff_bfd_link_hash_table_create,
-    _bfd_generic_link_hash_table_free,
     _bfd_xcoff_bfd_link_add_symbols,
     _bfd_generic_link_just_syms,
     _bfd_generic_copy_link_hash_symbol_type,

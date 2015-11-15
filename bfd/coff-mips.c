@@ -1,5 +1,5 @@
 /* BFD back-end for MIPS Extended-Coff files.
-   Copyright (C) 1990-2014 Free Software Foundation, Inc.
+   Copyright (C) 1990-2015 Free Software Foundation, Inc.
    Original version by Per Bothner.
    Full support added by Ian Lance Taylor, ian@cygnus.com.
 
@@ -960,7 +960,7 @@ mips_relocate_section (bfd *output_bfd,
 		 and the GP value of OUTPUT_BFD (which is in GP).  */
 	      addend = ecoff_data (input_bfd)->gp - gp;
 	    }
-	  else if (! info->relocatable
+	  else if (! bfd_link_relocatable (info)
 		   || h->root.type == bfd_link_hash_defined
 		   || h->root.type == bfd_link_hash_defweak)
 	    {
@@ -986,7 +986,7 @@ mips_relocate_section (bfd *output_bfd,
 	    }
 	}
 
-      if (info->relocatable)
+      if (bfd_link_relocatable (info))
 	{
 	  /* We are generating relocatable output, and must convert
 	     the existing reloc.  */
@@ -1363,9 +1363,9 @@ static const struct ecoff_backend_data mips_ecoff_backend_data =
   _bfd_coff_section_already_linked
 #define _bfd_ecoff_bfd_define_common_symbol bfd_generic_define_common_symbol
 
-extern const bfd_target ecoff_big_vec;
+extern const bfd_target mips_ecoff_be_vec;
 
-const bfd_target ecoff_little_vec =
+const bfd_target mips_ecoff_le_vec =
 {
   "ecoff-littlemips",		/* name */
   bfd_target_ecoff_flavour,
@@ -1405,12 +1405,12 @@ const bfd_target ecoff_little_vec =
      BFD_JUMP_TABLE_LINK (_bfd_ecoff),
      BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
 
-  & ecoff_big_vec,
+  & mips_ecoff_be_vec,
 
   & mips_ecoff_backend_data
 };
 
-const bfd_target ecoff_big_vec =
+const bfd_target mips_ecoff_be_vec =
 {
   "ecoff-bigmips",		/* name */
   bfd_target_ecoff_flavour,
@@ -1449,12 +1449,12 @@ const bfd_target ecoff_big_vec =
      BFD_JUMP_TABLE_LINK (_bfd_ecoff),
      BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
 
-  & ecoff_little_vec,
+  & mips_ecoff_le_vec,
 
   & mips_ecoff_backend_data
 };
 
-const bfd_target ecoff_biglittle_vec =
+const bfd_target mips_ecoff_bele_vec =
 {
   "ecoff-biglittlemips",		/* name */
   bfd_target_ecoff_flavour,

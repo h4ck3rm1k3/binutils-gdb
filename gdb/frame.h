@@ -1,6 +1,6 @@
 /* Definitions for dealing with stack frames, for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2014 Free Software Foundation, Inc.
+   Copyright (C) 1986-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -68,6 +68,8 @@
    stack *address, ...
 
    */
+
+#include "language.h"
 
 struct symtab_and_line;
 struct frame_unwind;
@@ -395,10 +397,9 @@ extern void find_frame_sal (struct frame_info *frame,
 			    struct symtab_and_line *sal);
 
 /* Set the current source and line to the location given by frame
-   FRAME, if possible.  When CENTER is true, adjust so the relevant
-   line is in the center of the next 'list'.  */
+   FRAME, if possible.  */
 
-void set_current_sal_from_frame (struct frame_info *, int);
+void set_current_sal_from_frame (struct frame_info *);
 
 /* Return the frame base (what ever that is) (DEPRECATED).
 
@@ -502,9 +503,22 @@ enum unwind_stop_reason
 
 enum unwind_stop_reason get_frame_unwind_stop_reason (struct frame_info *);
 
-/* Translate a reason code to an informative string.  */
+/* Translate a reason code to an informative string.  This converts the
+   generic stop reason codes into a generic string describing the code.
+   For a possibly frame specific string explaining the stop reason, use
+   FRAME_STOP_REASON_STRING instead.  */
 
-const char *frame_stop_reason_string (enum unwind_stop_reason);
+const char *unwind_stop_reason_to_string (enum unwind_stop_reason);
+
+/* Return a possibly frame specific string explaining why the unwind
+   stopped here.  E.g., if unwinding tripped on a memory error, this
+   will return the error description string, which includes the address
+   that we failed to access.  If there's no specific reason stored for
+   a frame then a generic reason string will be returned.
+
+   Should only be called for frames that don't have a previous frame.  */
+
+const char *frame_stop_reason_string (struct frame_info *);
 
 /* Unwind the stack frame so that the value of REGNUM, in the previous
    (up, older) frame is returned.  If VALUEP is NULL, don't
@@ -653,8 +667,8 @@ extern void *frame_obstack_zalloc (unsigned long size);
 /* Create a regcache, and copy the frame's registers into it.  */
 struct regcache *frame_save_as_regcache (struct frame_info *this_frame);
 
-extern struct block *get_frame_block (struct frame_info *,
-                                      CORE_ADDR *addr_in_block);
+extern const struct block *get_frame_block (struct frame_info *,
+					    CORE_ADDR *addr_in_block);
 
 /* Return the `struct block' that belongs to the selected thread's
    selected frame.  If the inferior has no state, return NULL.
@@ -682,7 +696,7 @@ extern struct block *get_frame_block (struct frame_info *,
    it occurs in the CLI code and makes it possible for commands to
    work, even when the inferior has no state.  */
 
-extern struct block *get_selected_block (CORE_ADDR *addr_in_block);
+extern const struct block *get_selected_block (CORE_ADDR *addr_in_block);
 
 extern struct symbol *get_frame_function (struct frame_info *);
 
@@ -751,8 +765,6 @@ extern void args_info (char *, int);
 
 extern void locals_info (char *, int);
 
-extern void (*deprecated_selected_frame_level_changed_hook) (int);
-
 extern void return_command (char *, int);
 
 /* Set FRAME's unwinder temporarily, so that we can call a sniffer.
@@ -803,5 +815,10 @@ extern struct frame_info *create_new_frame (CORE_ADDR base, CORE_ADDR pc);
 
 extern int frame_unwinder_is (struct frame_info *fi,
 			      const struct frame_unwind *unwinder);
+
+/* Return the language of FRAME.  */
+
+extern enum language get_frame_language (struct frame_info *frame);
+
 
 #endif /* !defined (FRAME_H)  */

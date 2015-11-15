@@ -1,5 +1,5 @@
 /* BFD back-end for linux flavored i386 a.out binaries.
-   Copyright (C) 1992-2014 Free Software Foundation, Inc.
+   Copyright (C) 1992-2015 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -38,7 +38,7 @@
 /* Do not "beautify" the CONCAT* macro args.  Traditional C will not
    remove whitespace added here, and thus will fail to concatenate
    the tokens.  */
-#define MY(OP) CONCAT2 (i386linux_,OP)
+#define MY(OP) CONCAT2 (i386_aout_linux_,OP)
 #define TARGETNAME "a.out-i386-linux"
 
 extern const bfd_target MY(vec);
@@ -318,7 +318,7 @@ linux_add_one_symbol (struct bfd_link_info *info,
 
   insert = FALSE;
 
-  if (! info->relocatable
+  if (! bfd_link_relocatable (info)
       && linux_hash_table (info)->dynobj == NULL
       && strcmp (name, SHARABLE_CONFLICTS) == 0
       && (flags & BSF_CONSTRUCTOR) != 0

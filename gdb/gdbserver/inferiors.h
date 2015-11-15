@@ -1,5 +1,5 @@
 /* Inferior process information for the remote server for GDB.
-   Copyright (C) 1993-2014 Free Software Foundation, Inc.
+   Copyright (C) 1993-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -33,6 +33,7 @@ struct inferior_list_entry
 };
 
 struct thread_info;
+struct regcache;
 struct target_desc;
 struct sym_cache;
 struct breakpoint;
@@ -69,7 +70,7 @@ struct process_info
   const struct target_desc *tdesc;
 
   /* Private target data.  */
-  struct process_info_private *private;
+  struct process_info_private *priv;
 };
 
 #define ptid_of(inf) ((inf)->entry.id)
@@ -77,7 +78,7 @@ struct process_info
 #define lwpid_of(inf) ptid_get_lwp ((inf)->entry.id)
 
 /* Return a pointer to the process that corresponds to the current
-   thread (current_inferior).  It is an error to call this if there is
+   thread (current_thread).  It is an error to call this if there is
    no current thread selected.  */
 
 struct process_info *current_process (void);
@@ -121,11 +122,14 @@ int one_inferior_p (struct inferior_list *list);
 #define ALL_PROCESSES(cur, tmp)					\
   ALL_INFERIORS_TYPE (struct process_info, &all_processes, cur, tmp)
 
-extern struct thread_info *current_inferior;
+extern struct thread_info *current_thread;
 void remove_inferior (struct inferior_list *list,
 		      struct inferior_list_entry *entry);
 
 struct inferior_list_entry *get_first_inferior (struct inferior_list *list);
+
+/* Return the first process in the processes list.  */
+struct process_info *get_first_process (void);
 
 struct process_info *add_process (int pid, int attached);
 void remove_process (struct process_info *process);
@@ -147,7 +151,7 @@ struct inferior_list_entry *find_inferior_id (struct inferior_list *list,
 
 void *inferior_target_data (struct thread_info *);
 void set_inferior_target_data (struct thread_info *, void *);
-void *inferior_regcache_data (struct thread_info *);
-void set_inferior_regcache_data (struct thread_info *, void *);
+struct regcache *inferior_regcache_data (struct thread_info *);
+void set_inferior_regcache_data (struct thread_info *, struct regcache *);
 
 #endif /* INFERIORS_H */

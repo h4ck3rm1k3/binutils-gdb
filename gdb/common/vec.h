@@ -1,5 +1,5 @@
 /* Vector API for GDB.
-   Copyright (C) 2004-2014 Free Software Foundation, Inc.
+   Copyright (C) 2004-2015 Free Software Foundation, Inc.
    Contributed by Nathan Sidwell <nathan@codesourcery.com>
 
    This file is part of GDB.
@@ -19,11 +19,6 @@
 
 #if !defined (GDB_VEC_H)
 #define GDB_VEC_H
-
-#include <stddef.h>
-
-#include <string.h>
-#include "gdb_assert.h"
 
 /* The macros here implement a set of templated vector types and
    associated interfaces.  These templates are implemented with
@@ -501,7 +496,7 @@ static inline void VEC_OP (T,free)					  \
 static inline void VEC_OP (T,cleanup)					  \
      (void *arg_)							  \
 {									  \
-  VEC(T) **vec_ = arg_;							  \
+  VEC(T) **vec_ = (VEC(T) **) arg_;					  \
   if (*vec_)								  \
     vec_free_ (*vec_);							  \
   *vec_ = NULL;								  \
@@ -578,7 +573,7 @@ static inline int VEC_OP (T,iterate)					  \
     }									  \
   else									  \
     {									  \
-      *ptr = 0;								  \
+      *ptr = (T) 0;							  \
       return 0;								  \
     }									  \
 }									  \
@@ -748,7 +743,7 @@ static inline void VEC_OP (T,free)					  \
 static inline void VEC_OP (T,cleanup)					  \
      (void *arg_)							  \
 {									  \
-  VEC(T) **vec_ = arg_;							  \
+  VEC(T) **vec_ = (VEC(T) **) arg_;					  \
   if (*vec_)								  \
     vec_free_ (*vec_);							  \
   *vec_ = NULL;								  \
@@ -1058,7 +1053,7 @@ static inline void VEC_OP (T,free)					  \
 static inline void VEC_OP (T,cleanup)					  \
      (void *arg_)							  \
 {									  \
-  VEC(T) **vec_ = arg_;							  \
+  VEC(T) **vec_ = (VEC(T) **) arg_;					  \
   if (*vec_)								  \
     vec_free_ (*vec_);							  \
   *vec_ = NULL;								  \

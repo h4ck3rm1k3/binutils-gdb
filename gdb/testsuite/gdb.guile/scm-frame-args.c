@@ -1,6 +1,6 @@
 /* This testcase is part of GDB, the GNU debugger.
 
-   Copyright 2014 Free Software Foundation, Inc.
+   Copyright 2014-2015 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ init_ss (struct ss *s, int a, int b)
 void
 foo (int x, struct ss ss)
 {
-  return; /* break-here */
+  x = ss.a.m; /* break-here */
 }
 
 int

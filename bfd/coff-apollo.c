@@ -1,5 +1,5 @@
 /* BFD back-end for Apollo 68000 COFF binaries.
-   Copyright (C) 1990-2014 Free Software Foundation, Inc.
+   Copyright (C) 1990-2015 Free Software Foundation, Inc.
    By Troy Rollo (troy@cbme.unsw.edu.au)
    Based on m68k standard COFF version Written by Cygnus Support.
 
@@ -106,7 +106,7 @@ apollo_howto2rtype (reloc_howto_type *internal)
 #include "coffcode.h"
 
 #ifndef TARGET_SYM
-#define TARGET_SYM apollocoff_vec
+#define TARGET_SYM m68k_coff_apollo_vec
 #endif
 
 #ifndef TARGET_NAME

@@ -1,6 +1,6 @@
 /* GNU/Linux native-dependent code for debugging multiple forks.
 
-   Copyright (C) 2005-2014 Free Software Foundation, Inc.
+   Copyright (C) 2005-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -20,18 +20,17 @@
 #include "defs.h"
 #include "arch-utils.h"
 #include "inferior.h"
+#include "infrun.h"
 #include "regcache.h"
 #include "gdbcmd.h"
 #include "infcall.h"
 #include "objfiles.h"
-#include "gdb_assert.h"
-#include <string.h>
 #include "linux-fork.h"
 #include "linux-nat.h"
 #include "gdbthread.h"
 #include "source.h"
 
-#include <sys/ptrace.h>
+#include "nat/gdb_ptrace.h"
 #include "gdb_wait.h"
 #include <dirent.h>
 #include <ctype.h>
@@ -298,8 +297,7 @@ fork_save_infrun_state (struct fork_info *fp, int clobber_regs)
 		fp->maxfd = tmp;
 	    }
 	  /* Allocate array of file positions.  */
-	  fp->filepos = xrealloc (fp->filepos,
-				  (fp->maxfd + 1) * sizeof (*fp->filepos));
+	  fp->filepos = XRESIZEVEC (off_t, fp->filepos, fp->maxfd + 1);
 
 	  /* Initialize to -1 (invalid).  */
 	  for (tmp = 0; tmp <= fp->maxfd; tmp++)
@@ -417,7 +415,7 @@ linux_fork_detach (const char *args, int from_tty)
 static void
 inferior_call_waitpid_cleanup (void *fp)
 {
-  struct fork_info *oldfp = fp;
+  struct fork_info *oldfp = (struct fork_info *) fp;
 
   if (oldfp)
     {
@@ -691,12 +689,15 @@ checkpoint_command (char *args, int from_tty)
 
   retpid = value_as_long (ret);
   get_last_target_status (&last_target_ptid, &last_target_waitstatus);
+
+  fp = find_fork_pid (retpid);
+
   if (from_tty)
     {
       int parent_pid;
 
-      printf_filtered (_("checkpoint: fork returned pid %ld.\n"),
-		       (long) retpid);
+      printf_filtered (_("checkpoint %d: fork returned pid %ld.\n"),
+		       fp != NULL ? fp->num : -1, (long) retpid);
       if (info_verbose)
 	{
 	  parent_pid = ptid_get_lwp (last_target_ptid);
@@ -707,7 +708,6 @@ checkpoint_command (char *args, int from_tty)
 	}
     }
 
-  fp = find_fork_pid (retpid);
   if (!fp)
     error (_("Failed to find new fork"));
   fork_save_infrun_state (fp, 1);

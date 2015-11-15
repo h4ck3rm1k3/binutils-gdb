@@ -1,7 +1,7 @@
 /* Private implementation details of interface between gdb and its
    extension languages.
 
-   Copyright (C) 2014 Free Software Foundation, Inc.
+   Copyright (C) 2014-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -22,6 +22,7 @@
 #define EXTENSION_PRIV_H
 
 #include "extension.h"
+#include <signal.h>
 
 /* The return code for some API calls.  */
 
@@ -102,6 +103,11 @@ struct extension_language_script_ops
      If there's an error while processing the script this function may,
      but is not required to, throw an error.  */
   objfile_script_sourcer_func *objfile_script_sourcer;
+
+  /* Execute a script attached to an objfile.
+     If there's an error while processing the script this function may,
+     but is not required to, throw an error.  */
+  objfile_script_executor_func *objfile_script_executor;
 
   /* Return non-zero if auto-loading scripts in this extension language
      is enabled.  */
@@ -256,6 +262,64 @@ struct extension_language_ops
      changed or an error occurs no further languages are called.  */
   enum ext_lang_rc (*before_prompt) (const struct extension_language_defn *,
 				     const char *current_gdb_prompt);
+
+  /* xmethod support:
+     clone_xmethod_worker_data, free_xmethod_worker_data,
+     get_matching_xmethod_workers, get_xmethod_arg_types,
+     get_xmethod_return_type, invoke_xmethod.
+     These methods are optional and may be NULL, but if one of them is
+     implemented then they all must be.  */
+
+  /* Clone DATA and return a new but identical xmethod worker data
+     object for this extension language.  */
+  void * (*clone_xmethod_worker_data)
+    (const struct extension_language_defn *extlang, void *data);
+
+  /* Free the DATA object of this extension language.  */
+  void (*free_xmethod_worker_data)
+    (const struct extension_language_defn *extlang, void *data);
+
+  /* Return a vector of matching xmethod workers defined in this
+     extension language.  The workers service methods with name
+     METHOD_NAME on objects of type OBJ_TYPE.  The vector is returned
+     in DM_VEC.  */
+  enum ext_lang_rc (*get_matching_xmethod_workers)
+    (const struct extension_language_defn *extlang,
+     struct type *obj_type,
+     const char *method_name,
+     xmethod_worker_vec **dm_vec);
+
+  /* Given a WORKER servicing a particular method, return the types
+     of the arguments the method takes.  The number of arguments is
+     returned in NARGS, and their types are returned in the array
+     ARGTYPES.  */
+  enum ext_lang_rc (*get_xmethod_arg_types)
+    (const struct extension_language_defn *extlang,
+     struct xmethod_worker *worker,
+     int *nargs,
+     struct type ***arg_types);
+
+  /* Given a WORKER servicing a particular method, fetch the type of the
+     result of the method.  OBJECT, ARGS, NARGS are the same as for
+     invoke_xmethod.  The result type is stored in *RESULT_TYPE.
+     For backward compatibility with 7.9, which did not support getting the
+     result type, if the get_result_type operation is not provided by WORKER
+     then EXT_LANG_RC_OK is returned and NULL is returned in *RESULT_TYPE.  */
+  enum ext_lang_rc (*get_xmethod_result_type)
+    (const struct extension_language_defn *extlang,
+     struct xmethod_worker *worker,
+     struct value *object, struct value **args, int nargs,
+     struct type **result_type);
+
+  /* Invoke the xmethod serviced by WORKER.  The xmethod is invoked
+     on OBJECT with arguments in the array ARGS.  NARGS is the length of
+     this array.  Returns the value returned by the xmethod.  */
+  struct value * (*invoke_xmethod)
+    (const struct extension_language_defn *extlang,
+     struct xmethod_worker *worker,
+     struct value *object,
+     struct value **args,
+     int nargs);
 };
 
 /* State necessary to restore a signal handler to its previous value.  */
@@ -266,7 +330,7 @@ struct signal_handler
   int handler_saved;
 
   /* The signal handler.  */
-  RETSIGTYPE (*handler) ();
+  sighandler_t handler;
 };
 
 /* State necessary to restore the currently active extension language

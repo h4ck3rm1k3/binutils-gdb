@@ -1,5 +1,5 @@
 /* BFD back-end for Intel 386 PE IMAGE COFF files.
-   Copyright (C) 1995-2014 Free Software Foundation, Inc.
+   Copyright (C) 1995-2015 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -21,7 +21,7 @@
 #include "sysdep.h"
 #include "bfd.h"
 
-#define TARGET_SYM 		i386pei_vec
+#define TARGET_SYM 		i386_pei_vec
 #define TARGET_NAME 		"pei-i386"
 #define COFF_IMAGE_WITH_PE
 #define COFF_WITH_PE

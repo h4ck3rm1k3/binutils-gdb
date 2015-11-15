@@ -1,5 +1,5 @@
 /* listing.c - maintain assembly listings
-   Copyright (C) 1991-2014 Free Software Foundation, Inc.
+   Copyright (C) 1991-2015 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -89,7 +89,6 @@
 
 #include "as.h"
 #include "filenames.h"
-#include "obstack.h"
 #include "safe-ctype.h"
 #include "input-file.h"
 #include "subsegs.h"
@@ -253,13 +252,13 @@ listing_message (const char *name, const char *message)
 void
 listing_warning (const char *message)
 {
-  listing_message (_("Warning:"), message);
+  listing_message (_("Warning: "), message);
 }
 
 void
 listing_error (const char *message)
 {
-  listing_message (_("Error:"), message);
+  listing_message (_("Error: "), message);
 }
 
 static file_info_type *

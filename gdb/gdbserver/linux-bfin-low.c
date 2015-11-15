@@ -1,6 +1,6 @@
 /* GNU/Linux/BFIN specific low level interface, for the remote server for GDB.
 
-   Copyright (C) 2005-2014 Free Software Foundation, Inc.
+   Copyright (C) 2005-2015 Free Software Foundation, Inc.
 
    Contributed by Analog Devices, Inc.
 
@@ -21,7 +21,6 @@
 
 #include "server.h"
 #include "linux-low.h"
-#include "libiberty.h"
 #include <asm/ptrace.h>
 
 /* Defined in auto-generated file reg-bfin.c.  */
@@ -74,7 +73,16 @@ bfin_set_pc (struct regcache *regcache, CORE_ADDR pc)
 }
 
 #define bfin_breakpoint_len 2
-static const unsigned char bfin_breakpoint[bfin_breakpoint_len] = {0xa1, 0x00};
+static const gdb_byte bfin_breakpoint[bfin_breakpoint_len] = {0xa1, 0x00};
+
+/* Implementation of linux_target_ops method "sw_breakpoint_from_kind".  */
+
+static const gdb_byte *
+bfin_sw_breakpoint_from_kind (int kind, int *size)
+{
+  *size = bfin_breakpoint_len;
+  return bfin_breakpoint;
+}
 
 static int
 bfin_breakpoint_at (CORE_ADDR where)
@@ -123,8 +131,8 @@ struct linux_target_ops the_low_target = {
   NULL, /* fetch_register */
   bfin_get_pc,
   bfin_set_pc,
-  bfin_breakpoint,
-  bfin_breakpoint_len,
+  NULL, /* breakpoint_kind_from_pc */
+  bfin_sw_breakpoint_from_kind,
   NULL, /* breakpoint_reinsert_addr */
   2,
   bfin_breakpoint_at,

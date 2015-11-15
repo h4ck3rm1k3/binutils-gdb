@@ -1,5 +1,5 @@
 # Expect script for LD Bootstrap Tests
-#   Copyright (C) 1993-2014 Free Software Foundation, Inc.
+#   Copyright (C) 1993-2015 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
 #
@@ -120,9 +120,18 @@ foreach flags $test_flags {
 	}
     }
 
+    # Check if the system's zlib library is used.
+    if {[file exists ../zlib/Makefile ]} then {
+	set extralibs "$extralibs -L../zlib -lz"
+    } else {
+	set extralibs "$extralibs -lz"
+    }
+
     # Plugin support requires linking with libdl.
     if { $plugins == "yes" } {
-	set extralibs "$extralibs -ldl"
+	if { ![istarget "*-*-freebsd*"]} {
+	    set extralibs "$extralibs -ldl"
+	}
     }
 
     # On Irix 5, linking with --static only works if all the files are

@@ -1,6 +1,6 @@
 /* Handle Darwin shared libraries for GDB, the GNU Debugger.
 
-   Copyright (C) 2009-2014 Free Software Foundation, Inc.
+   Copyright (C) 2009-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -30,8 +30,6 @@
 #include "gdbthread.h"
 #include "gdb_bfd.h"
 
-#include "gdb_assert.h"
-
 #include "solist.h"
 #include "solib.h"
 #include "solib-svr4.h"
@@ -40,7 +38,6 @@
 #include "elf-bfd.h"
 #include "exec.h"
 #include "auxv.h"
-#include "exceptions.h"
 #include "mach-o.h"
 #include "mach-o/external.h"
 
@@ -99,7 +96,8 @@ get_darwin_info (void)
 {
   struct darwin_info *info;
 
-  info = program_space_data (current_program_space, solib_darwin_pspace_data);
+  info = (struct darwin_info *) program_space_data (current_program_space,
+						    solib_darwin_pspace_data);
   if (info != NULL)
     return info;
 
@@ -274,7 +272,7 @@ darwin_current_sos (void)
       char *file_path;
       int errcode;
       struct darwin_so_list *dnew;
-      struct so_list *new;
+      struct so_list *newobj;
       struct cleanup *old_chain;
 
       /* Read image info from inferior.  */
@@ -305,22 +303,22 @@ darwin_current_sos (void)
 
       /* Create and fill the new so_list element.  */
       dnew = XCNEW (struct darwin_so_list);
-      new = &dnew->sl;
+      newobj = &dnew->sl;
       old_chain = make_cleanup (xfree, dnew);
 
-      new->lm_info = &dnew->li;
+      newobj->lm_info = &dnew->li;
 
-      strncpy (new->so_name, file_path, SO_NAME_MAX_PATH_SIZE - 1);
-      new->so_name[SO_NAME_MAX_PATH_SIZE - 1] = '\0';
-      strcpy (new->so_original_name, new->so_name);
+      strncpy (newobj->so_name, file_path, SO_NAME_MAX_PATH_SIZE - 1);
+      newobj->so_name[SO_NAME_MAX_PATH_SIZE - 1] = '\0';
+      strcpy (newobj->so_original_name, newobj->so_name);
       xfree (file_path);
-      new->lm_info->lm_addr = load_addr;
+      newobj->lm_info->lm_addr = load_addr;
 
       if (head == NULL)
-	head = new;
+	head = newobj;
       else
-	tail->next = new;
-      tail = new;
+	tail->next = newobj;
+      tail = newobj;
 
       discard_cleanups (old_chain);
     }
@@ -572,12 +570,12 @@ darwin_relocate_section_addresses (struct so_list *so,
     so->addr_low = sec->addr;
 }
 
-static struct symbol *
-darwin_lookup_lib_symbol (const struct objfile *objfile,
+static struct block_symbol
+darwin_lookup_lib_symbol (struct objfile *objfile,
 			  const char *name,
 			  const domain_enum domain)
 {
-  return NULL;
+  return (struct block_symbol) {NULL, NULL};
 }
 
 static bfd *

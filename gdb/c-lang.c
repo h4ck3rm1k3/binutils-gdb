@@ -1,6 +1,6 @@
 /* C language support routines for GDB, the GNU debugger.
 
-   Copyright (C) 1992-2014 Free Software Foundation, Inc.
+   Copyright (C) 1992-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -27,15 +27,12 @@
 #include "c-lang.h"
 #include "valprint.h"
 #include "macroscope.h"
-#include "gdb_assert.h"
 #include "charset.h"
-#include <string.h>
 #include "demangle.h"
 #include "cp-abi.h"
 #include "cp-support.h"
 #include "gdb_obstack.h"
 #include <ctype.h>
-#include "exceptions.h"
 #include "gdbcore.h"
 
 extern void _initialize_c_language (void);
@@ -127,7 +124,7 @@ classify_type (struct type *elttype, struct gdbarch *gdbarch,
 	  /* Perhaps check_typedef did not update the target type.  In
 	     this case, force the lookup again and hope it works out.
 	     It never will for C, but it might for C++.  */
-	  CHECK_TYPEDEF (elttype);
+	  elttype = check_typedef (elttype);
 	}
     }
 
@@ -305,7 +302,7 @@ c_get_string (struct value *value, gdb_byte **buffer,
       /* I is now either a user-defined length, the number of non-null
  	 characters, or FETCHLIMIT.  */
       *length = i * width;
-      *buffer = xmalloc (*length);
+      *buffer = (gdb_byte *) xmalloc (*length);
       memcpy (*buffer, contents, *length);
       err = 0;
     }
@@ -330,10 +327,10 @@ c_get_string (struct value *value, gdb_byte **buffer,
 
       err = read_string (addr, *length, width, fetchlimit,
 			 byte_order, buffer, length);
-      if (err)
+      if (err != 0)
 	{
 	  xfree (*buffer);
-	  memory_error (err, addr);
+	  memory_error (TARGET_XFER_E_IO, addr);
 	}
     }
 
@@ -415,7 +412,7 @@ emit_numeric_character (struct type *type, unsigned long value,
 {
   gdb_byte *buffer;
 
-  buffer = alloca (TYPE_LENGTH (type));
+  buffer = (gdb_byte *) alloca (TYPE_LENGTH (type));
   pack_long (buffer, type, value);
   obstack_grow (output, buffer, TYPE_LENGTH (type));
 }
@@ -757,7 +754,7 @@ const struct op_print c_op_print_tab[] =
   {"sizeof ", UNOP_SIZEOF, PREC_PREFIX, 0},
   {"++", UNOP_PREINCREMENT, PREC_PREFIX, 0},
   {"--", UNOP_PREDECREMENT, PREC_PREFIX, 0},
-  {NULL, 0, 0, 0}
+  {NULL, OP_NULL, PREC_PREFIX, 0}
 };
 
 enum c_primitive_types {
@@ -868,6 +865,8 @@ const struct language_defn c_language_defn =
   NULL,				/* la_get_symbol_name_cmp */
   iterate_over_symbols,
   &c_varobj_ops,
+  c_get_compile_context,
+  c_compute_program,
   LANG_MAGIC
 };
 
@@ -993,6 +992,8 @@ const struct language_defn cplus_language_defn =
   NULL,				/* la_get_symbol_name_cmp */
   iterate_over_symbols,
   &cplus_varobj_ops,
+  NULL,
+  NULL,
   LANG_MAGIC
 };
 
@@ -1036,6 +1037,8 @@ const struct language_defn asm_language_defn =
   NULL,				/* la_get_symbol_name_cmp */
   iterate_over_symbols,
   &default_varobj_ops,
+  NULL,
+  NULL,
   LANG_MAGIC
 };
 
@@ -1084,6 +1087,8 @@ const struct language_defn minimal_language_defn =
   NULL,				/* la_get_symbol_name_cmp */
   iterate_over_symbols,
   &default_varobj_ops,
+  NULL,
+  NULL,
   LANG_MAGIC
 };
 

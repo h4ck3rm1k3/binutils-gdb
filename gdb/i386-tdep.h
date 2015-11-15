@@ -1,6 +1,6 @@
 /* Target-dependent code for the i386.
 
-   Copyright (C) 2001-2014 Free Software Foundation, Inc.
+   Copyright (C) 2001-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -56,17 +56,12 @@ enum struct_return
 struct gdbarch_tdep
 {
   /* General-purpose registers.  */
-  struct regset *gregset;
   int *gregset_reg_offset;
   int gregset_num_regs;
   size_t sizeof_gregset;
 
   /* Floating-point registers.  */
-  struct regset *fpregset;
   size_t sizeof_fpregset;
-
-  /* XSAVE extended state.  */
-  struct regset *xstateregset;
 
   /* Register number for %st(0).  The register numbers for the other
      registers follow from this one.  Set this to -1 to indicate the
@@ -198,7 +193,7 @@ struct gdbarch_tdep
   const struct target_desc *tdesc;
 
   /* Register group function.  */
-  const void *register_reggroup_p;
+  gdbarch_register_reggroup_p_ftype *register_reggroup_p;
 
   /* Offset of saved PC in jmp_buf.  */
   int jb_pc_offset;
@@ -242,6 +237,9 @@ struct gdbarch_tdep
   int (*i386_sysenter_record) (struct regcache *regcache);
   /* Parse syscall args.  */
   int (*i386_syscall_record) (struct regcache *regcache);
+
+  /* Regsets. */
+  const struct regset *fpregset;
 };
 
 /* Floating-point registers.  */
@@ -330,6 +328,8 @@ enum record_i386_regnum
 /* Size of the largest register.  */
 #define I386_MAX_REGISTER_SIZE	64
 
+extern struct target_desc *tdesc_i386;
+
 /* Types for i386-specific registers.  */
 extern struct type *i387_ext_type (struct gdbarch *gdbarch);
 
@@ -389,20 +389,18 @@ extern void i386_supply_gregset (const struct regset *regset,
 				 struct regcache *regcache, int regnum,
 				 const void *gregs, size_t len);
 
-/* Collect register REGNUM from the register cache REGCACHE and store
-   it in the buffer specified by GREGS and LEN as described by the
-   general-purpose register set REGSET.  If REGNUM is -1, do this for
-   all registers in REGSET.  */
-extern void i386_collect_gregset (const struct regset *regset,
-				  const struct regcache *regcache,
-				  int regnum, void *gregs, size_t len);
+/* General-purpose register set. */
+extern const struct regset i386_gregset;
 
-/* Return the appropriate register set for the core section identified
-   by SECT_NAME and SECT_SIZE.  */
-extern const struct regset *
-  i386_regset_from_core_section (struct gdbarch *gdbarch,
-				 const char *sect_name, size_t sect_size);
+/* Floating-point register set. */
+extern const struct regset i386_fpregset;
 
+/* Default iterator over core file register note sections.  */
+extern void
+  i386_iterate_over_regset_sections (struct gdbarch *gdbarch,
+				     iterate_over_regset_sections_cb *cb,
+				     void *cb_data,
+				     const struct regcache *regcache);
 
 extern struct displaced_step_closure *i386_displaced_step_copy_insn
   (struct gdbarch *gdbarch, CORE_ADDR from, CORE_ADDR to,
@@ -420,6 +418,7 @@ extern void i386_svr4_init_abi (struct gdbarch_info, struct gdbarch *);
 
 extern int i386_process_record (struct gdbarch *gdbarch,
                                 struct regcache *regcache, CORE_ADDR addr);
+extern const struct target_desc *i386_target_description (uint64_t xcr0);
 
 
 

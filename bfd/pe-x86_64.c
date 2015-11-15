@@ -1,5 +1,5 @@
 /* BFD back-end for Intel/AMD x86_64 PECOFF files.
-   Copyright (C) 2006-2014 Free Software Foundation, Inc.
+   Copyright (C) 2006-2015 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -23,7 +23,7 @@
 #include "sysdep.h"
 #include "bfd.h"
 
-#define TARGET_SYM 		x86_64pe_vec
+#define TARGET_SYM 		x86_64_pe_vec
 #define TARGET_NAME 		"pe-x86-64"
 #define COFF_WITH_PE
 #define COFF_WITH_pex64
@@ -58,12 +58,18 @@
 { COFF_SECTION_NAME_PARTIAL_MATCH (".gnu.linkonce.wi."), \
   COFF_ALIGNMENT_FIELD_EMPTY, COFF_ALIGNMENT_FIELD_EMPTY, 0 }
 
+/* The function pex64_bfd_print_pdata is implemented in pei-x86_64.c
+   source, but has be extended to also handle pe objects.  */
+extern bfd_boolean pex64_bfd_print_pdata (bfd *, void *);
+
+#define bfd_pe_print_pdata   pex64_bfd_print_pdata
+
 #include "coff-x86_64.c"
 
 /* Entry for big object files.  */
 
 const bfd_target
-x86_64pe_bigobj_vec =
+x86_64_pe_be_vec =
 {
   "pe-bigobj-x86-64",			/* Name.  */
   bfd_target_coff_flavour,

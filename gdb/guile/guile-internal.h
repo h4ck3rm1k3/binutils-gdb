@@ -1,6 +1,6 @@
 /* Internal header for GDB/Scheme code.
 
-   Copyright (C) 2014 Free Software Foundation, Inc.
+   Copyright (C) 2014-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -50,6 +50,50 @@ typedef struct
 
 #define END_VARIABLES { NULL, SCM_BOOL_F, NULL }
 
+#ifdef __cplusplus
+
+/* Although scm_t_subr is meant to hold a function pointer, at least
+   in some versions of guile, it is actually a typedef to "void *".
+   That means that in C++, an explicit cast is necessary to convert
+   function pointer to scm_t_subr.  But a cast also makes it possible
+   to pass function pointers with the wrong type by mistake.  So
+   instead of adding such casts throughout, we use 'as_a_scm_t_subr'
+   to do the conversion, which (only) has overloads for function
+   pointer types that are valid.
+
+   See https://lists.gnu.org/archive/html/guile-devel/2013-03/msg00001.html.
+*/
+
+static inline scm_t_subr
+as_a_scm_t_subr (SCM (*func) (void))
+{
+  return (scm_t_subr) func;
+}
+
+static inline scm_t_subr
+as_a_scm_t_subr (SCM (*func) (SCM))
+{
+  return (scm_t_subr) func;
+}
+
+static inline scm_t_subr
+as_a_scm_t_subr (SCM (*func) (SCM, SCM))
+{
+  return (scm_t_subr) func;
+}
+
+static inline scm_t_subr
+as_a_scm_t_subr (SCM (*func) (SCM, SCM, SCM))
+{
+  return (scm_t_subr) func;
+}
+
+#else
+
+/* In C, just do an implicit conversion.  */
+#define as_a_scm_t_subr(func) func
+
+#endif
 /* Scheme functions to define during initialization.  */
 
 typedef struct
@@ -97,6 +141,18 @@ typedef struct
 #define gdbscm_is_false(scm) scm_is_eq ((scm), SCM_BOOL_F)
 #define gdbscm_is_true(scm) (!gdbscm_is_false (scm))
 
+#ifndef HAVE_SCM_NEW_SMOB
+
+/* Guile <= 2.0.5 did not provide this function, so provide it here.  */
+
+static inline SCM
+scm_new_smob (scm_t_bits tc, scm_t_bits data)
+{
+  SCM_RETURN_NEWSMOB (tc, data);
+}
+
+#endif
+
 /* Function name that is passed around in case an error needs to be reported.
    __func is in C99, but we provide a wrapper "just in case",
    and because FUNC_NAME is the canonical value used in guile sources.
@@ -108,6 +164,10 @@ extern const char gdbscm_module_name[];
 extern const char gdbscm_init_module_name[];
 
 extern int gdb_scheme_initialized;
+
+extern int gdbscm_guile_major_version;
+extern int gdbscm_guile_minor_version;
+extern int gdbscm_guile_micro_version;
 
 extern const char gdbscm_print_excp_none[];
 extern const char gdbscm_print_excp_full[];
@@ -123,14 +183,15 @@ extern SCM gdbscm_string_string;
 
 /* scm-utils.c */
 
-extern void gdbscm_define_variables (const scheme_variable *, int public);
+extern void gdbscm_define_variables (const scheme_variable *, int is_public);
 
-extern void gdbscm_define_functions (const scheme_function *, int public);
+extern void gdbscm_define_functions (const scheme_function *, int is_public);
 
 extern void gdbscm_define_integer_constants (const scheme_integer_constant *,
-					     int public);
+					     int is_public);
 
-extern void gdbscm_printf (SCM port, const char *format, ...);
+extern void gdbscm_printf (SCM port, const char *format, ...)
+  ATTRIBUTE_PRINTF (2, 3);
 
 extern void gdbscm_debug_display (SCM obj);
 
@@ -152,27 +213,38 @@ extern ULONGEST gdbscm_scm_to_ulongest (SCM u);
 extern void gdbscm_dynwind_xfree (void *ptr);
 
 extern int gdbscm_is_procedure (SCM proc);
+
+extern char *gdbscm_gc_xstrdup (const char *);
+
+extern const char * const *gdbscm_gc_dup_argv (char **argv);
+
+extern int gdbscm_guile_version_is_at_least (int major, int minor, int micro);
 
-/* GDB smobs, from scm-smob.c */
+/* GDB smobs, from scm-gsmob.c */
 
 /* All gdb smobs must contain one of the following as the first member:
    gdb_smob, chained_gdb_smob, or eqable_gdb_smob.
 
-   The next,prev members of chained_gdb_smob allow for chaining gsmobs
-   together so that, for example, when an objfile is deleted we can clean up
-   all smobs that reference it.
+   Chained GDB smobs should have chained_gdb_smob as their first member.  The
+   next,prev members of chained_gdb_smob allow for chaining gsmobs together so
+   that, for example, when an objfile is deleted we can clean up all smobs that
+   reference it.
 
-   The containing_scm member of eqable_gdb_smob allows for returning the
-   same gsmob instead of creating a new one, allowing them to be eq?-able.
+   Eq-able GDB smobs should have eqable_gdb_smob as their first member.  The
+   containing_scm member of eqable_gdb_smob allows for returning the same gsmob
+   instead of creating a new one, allowing them to be eq?-able.
 
-   IMPORTANT: chained_gdb_smob and eqable_gdb-smob are a "subclasses" of
+   All other smobs should have gdb_smob as their first member.
+   FIXME: dje/2014-05-26: gdb_smob was useful during early development as a
+   "baseclass" for all gdb smobs.  If it's still unused by gdb 8.0 delete it.
+
+   IMPORTANT: chained_gdb_smob and eqable_gdb-smob are "subclasses" of
    gdb_smob.  The layout of chained_gdb_smob,eqable_gdb_smob must match
    gdb_smob as if it is a subclass.  To that end we use macro GDB_SMOB_HEAD
    to ensure this.  */
 
-#define GDB_SMOB_HEAD					\
-  /* Property list for externally added fields.  */	\
-  SCM properties;
+#define GDB_SMOB_HEAD \
+  int empty_base_class;
 
 typedef struct
 {
@@ -222,12 +294,6 @@ extern void gdbscm_init_chained_gsmob (chained_gdb_smob *base);
 extern void gdbscm_init_eqable_gsmob (eqable_gdb_smob *base,
 				      SCM containing_scm);
 
-extern SCM gdbscm_mark_gsmob (gdb_smob *base);
-
-extern SCM gdbscm_mark_chained_gsmob (chained_gdb_smob *base);
-
-extern SCM gdbscm_mark_eqable_gsmob (eqable_gdb_smob *base);
-
 extern void gdbscm_add_objfile_ref (struct objfile *objfile,
 				    const struct objfile_data *data_key,
 				    chained_gdb_smob *g_smob);
@@ -274,19 +340,23 @@ extern SCM gdbscm_make_type_error (const char *subr, int arg_pos,
 extern SCM gdbscm_make_invalid_object_error (const char *subr, int arg_pos,
 					     SCM bad_value, const char *error);
 
-extern SCM gdbscm_invalid_object_error (const char *subr, int arg_pos,
-					SCM bad_value, const char *error)
+extern void gdbscm_invalid_object_error (const char *subr, int arg_pos,
+					 SCM bad_value, const char *error)
    ATTRIBUTE_NORETURN;
 
 extern SCM gdbscm_make_out_of_range_error (const char *subr, int arg_pos,
 					   SCM bad_value, const char *error);
 
-extern SCM gdbscm_out_of_range_error (const char *subr, int arg_pos,
-				      SCM bad_value, const char *error)
+extern void gdbscm_out_of_range_error (const char *subr, int arg_pos,
+				       SCM bad_value, const char *error)
    ATTRIBUTE_NORETURN;
 
 extern SCM gdbscm_make_misc_error (const char *subr, int arg_pos,
 				   SCM bad_value, const char *error);
+
+extern void gdbscm_misc_error (const char *subr, int arg_pos,
+			       SCM bad_value, const char *error)
+   ATTRIBUTE_NORETURN;
 
 extern void gdbscm_throw (SCM exception) ATTRIBUTE_NORETURN;
 
@@ -304,14 +374,17 @@ extern char *gdbscm_exception_message_to_string (SCM exception);
 
 extern excp_matcher_func gdbscm_memory_error_p;
 
+extern excp_matcher_func gdbscm_user_error_p;
+
 extern SCM gdbscm_make_memory_error (const char *subr, const char *msg,
 				     SCM args);
 
-extern SCM gdbscm_memory_error (const char *subr, const char *msg, SCM args);
+extern void gdbscm_memory_error (const char *subr, const char *msg, SCM args)
+  ATTRIBUTE_NORETURN;
 
 /* scm-safe-call.c */
 
-extern void *gdbscm_with_guile (void *(*func) (void *), void *data);
+extern const char *gdbscm_with_guile (const char *(*func) (void *), void *data);
 
 extern SCM gdbscm_call_guile (SCM (*func) (void *), void *data,
 			      excp_matcher_func *ok_excps);
@@ -362,6 +435,18 @@ extern SCM bkscm_scm_from_block (const struct block *block,
 
 extern const struct block *bkscm_scm_to_block
   (SCM block_scm, int arg_pos, const char *func_name, SCM *excp);
+
+/* scm-cmd.c */
+
+extern char *gdbscm_parse_command_name (const char *name,
+					const char *func_name, int arg_pos,
+					struct cmd_list_element ***base_list,
+					struct cmd_list_element **start_list);
+
+extern int gdbscm_valid_command_class_p (int command_class);
+
+extern char *gdbscm_canonicalize_command_name (const char *name,
+					       int want_trailing_space);
 
 /* scm-frame.c */
 
@@ -426,13 +511,26 @@ extern objfile_smob *ofscm_objfile_smob_from_objfile (struct objfile *objfile);
 
 extern SCM ofscm_scm_from_objfile (struct objfile *objfile);
 
+/* scm-progspace.c */
+
+typedef struct _pspace_smob pspace_smob;
+
+extern SCM psscm_pspace_smob_pretty_printers (const pspace_smob *);
+
+extern pspace_smob *psscm_pspace_smob_from_pspace (struct program_space *);
+
+extern SCM psscm_scm_from_pspace (struct program_space *);
+
 /* scm-string.c */
+
+extern int gdbscm_scm_string_to_int (SCM string);
 
 extern char *gdbscm_scm_to_c_string (SCM string);
 
 extern SCM gdbscm_scm_from_c_string (const char *string);
 
-extern SCM gdbscm_scm_from_printf (const char *format, ...);
+extern SCM gdbscm_scm_from_printf (const char *format, ...)
+    ATTRIBUTE_PRINTF (1, 2);
 
 extern char *gdbscm_scm_to_string (SCM string, size_t *lenp,
 				   const char *charset,
@@ -441,8 +539,9 @@ extern char *gdbscm_scm_to_string (SCM string, size_t *lenp,
 extern SCM gdbscm_scm_from_string (const char *string, size_t len,
 				   const char *charset, int strict);
 
-extern char *gdbscm_scm_to_target_string_unsafe (SCM string, size_t *lenp,
-						 struct gdbarch *gdbarch);
+extern char *gdbscm_scm_to_host_string (SCM string, size_t *lenp, SCM *except);
+
+extern SCM gdbscm_scm_from_host_string (const char *string, size_t len);
 
 /* scm-symbol.c */
 
@@ -496,6 +595,7 @@ extern struct value *vlscm_convert_value_from_scheme
 /* stript_lang methods */
 
 extern objfile_script_sourcer_func gdbscm_source_objfile_script;
+extern objfile_script_executor_func gdbscm_execute_objfile_script;
 
 extern int gdbscm_auto_load_enabled (const struct extension_language_defn *);
 
@@ -524,6 +624,7 @@ extern void gdbscm_initialize_arches (void);
 extern void gdbscm_initialize_auto_load (void);
 extern void gdbscm_initialize_blocks (void);
 extern void gdbscm_initialize_breakpoints (void);
+extern void gdbscm_initialize_commands (void);
 extern void gdbscm_initialize_disasm (void);
 extern void gdbscm_initialize_exceptions (void);
 extern void gdbscm_initialize_frames (void);
@@ -532,7 +633,9 @@ extern void gdbscm_initialize_lazy_strings (void);
 extern void gdbscm_initialize_math (void);
 extern void gdbscm_initialize_objfiles (void);
 extern void gdbscm_initialize_pretty_printers (void);
+extern void gdbscm_initialize_parameters (void);
 extern void gdbscm_initialize_ports (void);
+extern void gdbscm_initialize_pspaces (void);
 extern void gdbscm_initialize_smobs (void);
 extern void gdbscm_initialize_strings (void);
 extern void gdbscm_initialize_symbols (void);

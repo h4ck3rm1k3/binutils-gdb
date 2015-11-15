@@ -1,5 +1,5 @@
 /* Remote utility routines for the remote server for GDB.
-   Copyright (C) 1986-2014 Free Software Foundation, Inc.
+   Copyright (C) 1986-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -23,9 +23,7 @@
 #include "tdesc.h"
 #include "dll.h"
 #include "rsp-low.h"
-
-#include <stdio.h>
-#include <string.h>
+#include <ctype.h>
 #if HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
 #endif
@@ -53,15 +51,12 @@
 #if HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
-#include <sys/time.h>
+#include "gdb_sys_time.h"
 #include <unistd.h>
 #if HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif
 #include <sys/stat.h>
-#if HAVE_ERRNO_H
-#include <errno.h>
-#endif
 
 #if USE_WIN32API
 #include <winsock2.h>
@@ -253,7 +248,7 @@ remote_prepare (char *name)
 
   port = strtoul (port_str + 1, &port_end, 10);
   if (port_str[1] == '\0' || *port_end != '\0')
-    fatal ("Bad port argument: %s", name);
+    error ("Bad port argument: %s", name);
 
 #ifdef USE_WIN32API
   if (!winsock_initialized)
@@ -536,7 +531,7 @@ hex_or_minus_one (char *buf, char **obuf)
 {
   ULONGEST ret;
 
-  if (strncmp (buf, "-1", 2) == 0)
+  if (startswith (buf, "-1"))
     {
       ret = (ULONGEST) -1;
       buf += 2;
@@ -578,9 +573,10 @@ read_ptid (char *buf, char **obuf)
   /* No multi-process.  Just a tid.  */
   tid = hex_or_minus_one (p, &pp);
 
-  /* Since the stub is not sending a process id, then default to
-     what's in the current inferior.  */
-  pid = ptid_get_pid (current_ptid);
+  /* Since GDB is not sending a process id (multi-process extensions
+     are off), then there's only one process.  Default to the first in
+     the list.  */
+  pid = pid_of (get_first_process ());
 
   if (obuf)
     *obuf = pp;
@@ -626,7 +622,7 @@ putpkt_binary_1 (char *buf, int cnt, int is_notif)
   char *p;
   int cc;
 
-  buf2 = xmalloc (strlen ("$") + cnt + strlen ("#nn") + 1);
+  buf2 = (char *) xmalloc (strlen ("$") + cnt + strlen ("#nn") + 1);
 
   /* Copy the packet into buffer BUF2, encapsulating it
      and giving it a checksum.  */
@@ -692,7 +688,7 @@ putpkt_binary_1 (char *buf, int cnt, int is_notif)
 	}
 
       /* Check for an input interrupt while we're here.  */
-      if (cc == '\003' && current_inferior != NULL)
+      if (cc == '\003' && current_thread != NULL)
 	(*the_target->request_interrupt) ();
     }
   while (cc != '+');
@@ -747,10 +743,18 @@ input_interrupt (int unused)
 
       cc = read_prim (&c, 1);
 
-      if (cc != 1 || c != '\003' || current_inferior == NULL)
+      if (cc == 0)
 	{
-	  fprintf (stderr, "input_interrupt, count = %d c = %d ('%c')\n",
-		   cc, c, c);
+	  fprintf (stderr, "client connection closed\n");
+	  return;
+	}
+      else if (cc != 1 || c != '\003')
+	{
+	  fprintf (stderr, "input_interrupt, count = %d c = %d ", cc, c);
+	  if (isprint (c))
+	    fprintf (stderr, "('%c')\n", c);
+	  else
+	    fprintf (stderr, "('\\x%02x')\n", c & 0xff);
 	  return;
 	}
 
@@ -1111,21 +1115,64 @@ prepare_resume_reply (char *buf, ptid_t ptid,
   switch (status->kind)
     {
     case TARGET_WAITKIND_STOPPED:
+    case TARGET_WAITKIND_FORKED:
+    case TARGET_WAITKIND_VFORKED:
+    case TARGET_WAITKIND_VFORK_DONE:
+    case TARGET_WAITKIND_EXECD:
       {
-	struct thread_info *saved_inferior;
+	struct thread_info *saved_thread;
 	const char **regp;
 	struct regcache *regcache;
 
-	sprintf (buf, "T%02x", status->value.sig);
+	if ((status->kind == TARGET_WAITKIND_FORKED && report_fork_events)
+	    || (status->kind == TARGET_WAITKIND_VFORKED && report_vfork_events))
+	  {
+	    enum gdb_signal signal = GDB_SIGNAL_TRAP;
+	    const char *event = (status->kind == TARGET_WAITKIND_FORKED
+				 ? "fork" : "vfork");
+
+	    sprintf (buf, "T%02x%s:", signal, event);
+	    buf += strlen (buf);
+	    buf = write_ptid (buf, status->value.related_pid);
+	    strcat (buf, ";");
+	  }
+	else if (status->kind == TARGET_WAITKIND_VFORK_DONE && report_vfork_events)
+	  {
+	    enum gdb_signal signal = GDB_SIGNAL_TRAP;
+
+	    sprintf (buf, "T%02xvforkdone:;", signal);
+	  }
+	else if (status->kind == TARGET_WAITKIND_EXECD && report_exec_events)
+	  {
+	    enum gdb_signal signal = GDB_SIGNAL_TRAP;
+	    const char *event = "exec";
+	    char hexified_pathname[PATH_MAX * 2];
+
+	    sprintf (buf, "T%02x%s:", signal, event);
+	    buf += strlen (buf);
+
+	    /* Encode pathname to hexified format.  */
+	    bin2hex ((const gdb_byte *) status->value.execd_pathname,
+		     hexified_pathname,
+		     strlen (status->value.execd_pathname));
+
+	    sprintf (buf, "%s;", hexified_pathname);
+	    xfree (status->value.execd_pathname);
+	    status->value.execd_pathname = NULL;
+	    buf += strlen (buf);
+	  }
+	else
+	  sprintf (buf, "T%02x", status->value.sig);
+
 	buf += strlen (buf);
 
-	saved_inferior = current_inferior;
+	saved_thread = current_thread;
 
-	current_inferior = find_thread_ptid (ptid);
+	current_thread = find_thread_ptid (ptid);
 
 	regp = current_target_desc ()->expedite_regs;
 
-	regcache = get_thread_regcache (current_inferior, 1);
+	regcache = get_thread_regcache (current_thread, 1);
 
 	if (the_target->stopped_by_watchpoint != NULL
 	    && (*the_target->stopped_by_watchpoint) ())
@@ -1145,6 +1192,16 @@ prepare_resume_reply (char *buf, ptid_t ptid,
 	    for (i = sizeof (void *) * 2; i > 0; i--)
 	      *buf++ = tohex ((addr >> (i - 1) * 4) & 0xf);
 	    *buf++ = ';';
+	  }
+	else if (swbreak_feature && target_stopped_by_sw_breakpoint ())
+	  {
+	    sprintf (buf, "swbreak:;");
+	    buf += strlen (buf);
+	  }
+	else if (hwbreak_feature && target_stopped_by_hw_breakpoint ())
+	  {
+	    sprintf (buf, "hwbreak:;");
+	    buf += strlen (buf);
 	  }
 
 	while (*regp)
@@ -1202,7 +1259,7 @@ prepare_resume_reply (char *buf, ptid_t ptid,
 	    dlls_changed = 0;
 	  }
 
-	current_inferior = saved_inferior;
+	current_thread = saved_thread;
       }
       break;
     case TARGET_WAITKIND_EXITED:
@@ -1268,7 +1325,7 @@ decode_M_packet (char *from, CORE_ADDR *mem_addr_ptr, unsigned int *len_ptr,
     }
 
   if (*to_p == NULL)
-    *to_p = xmalloc (*len_ptr);
+    *to_p = (unsigned char *) xmalloc (*len_ptr);
 
   hex2bin (&from[i++], *to_p, *len_ptr);
 }
@@ -1294,7 +1351,7 @@ decode_X_packet (char *from, int packet_len, CORE_ADDR *mem_addr_ptr,
     }
 
   if (*to_p == NULL)
-    *to_p = xmalloc (*len_ptr);
+    *to_p = (unsigned char *) xmalloc (*len_ptr);
 
   if (remote_unescape_input ((const gdb_byte *) &from[i], packet_len - i,
 			     *to_p, *len_ptr) != *len_ptr)
@@ -1421,7 +1478,7 @@ look_up_one_symbol (const char *name, CORE_ADDR *addrp, int may_ask_gdb)
       unsigned int mem_len;
 
       decode_m_packet (&own_buf[1], &mem_addr, &mem_len);
-      mem_buf = xmalloc (mem_len);
+      mem_buf = (unsigned char *) xmalloc (mem_len);
       if (read_inferior_memory (mem_addr, mem_buf, mem_len) == 0)
 	bin2hex (mem_buf, own_buf, mem_len);
       else
@@ -1434,7 +1491,7 @@ look_up_one_symbol (const char *name, CORE_ADDR *addrp, int may_ask_gdb)
 	return -1;
     }
 
-  if (strncmp (own_buf, "qSymbol:", strlen ("qSymbol:")) != 0)
+  if (!startswith (own_buf, "qSymbol:"))
     {
       warning ("Malformed response to qSymbol, ignoring: %s\n", own_buf);
       return -1;
@@ -1452,7 +1509,7 @@ look_up_one_symbol (const char *name, CORE_ADDR *addrp, int may_ask_gdb)
   decode_address (addrp, p, q - p);
 
   /* Save the symbol in our cache.  */
-  sym = xmalloc (sizeof (*sym));
+  sym = XNEW (struct sym_cache);
   sym->name = xstrdup (name);
   sym->addr = *addrp;
   sym->next = proc->symbol_cache;
@@ -1505,7 +1562,7 @@ relocate_instruction (CORE_ADDR *to, CORE_ADDR oldloc)
       if (own_buf[0] == 'm')
 	{
 	  decode_m_packet (&own_buf[1], &mem_addr, &mem_len);
-	  mem_buf = xmalloc (mem_len);
+	  mem_buf = (unsigned char *) xmalloc (mem_len);
 	  if (read_inferior_memory (mem_addr, mem_buf, mem_len) == 0)
 	    bin2hex (mem_buf, own_buf, mem_len);
 	  else
@@ -1543,7 +1600,7 @@ relocate_instruction (CORE_ADDR *to, CORE_ADDR oldloc)
       return -1;
     }
 
-  if (strncmp (own_buf, "qRelocInsn:", strlen ("qRelocInsn:")) != 0)
+  if (!startswith (own_buf, "qRelocInsn:"))
     {
       warning ("Malformed response to qRelocInsn, ignoring: %s\n",
 	       own_buf);
@@ -1560,7 +1617,7 @@ void
 monitor_output (const char *msg)
 {
   int len = strlen (msg);
-  char *buf = xmalloc (len * 2 + 2);
+  char *buf = (char *) xmalloc (len * 2 + 2);
 
   buf[0] = 'O';
   bin2hex ((const gdb_byte *) msg, buf + 1, len);

@@ -1,6 +1,6 @@
 /* Scheme interface to symbol tables.
 
-   Copyright (C) 2008-2014 Free Software Foundation, Inc.
+   Copyright (C) 2008-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -86,7 +86,7 @@ static const struct objfile_data *stscm_objfile_data_key;
 static hashval_t
 stscm_hash_symtab_smob (const void *p)
 {
-  const symtab_smob *st_smob = p;
+  const symtab_smob *st_smob = (const symtab_smob *) p;
 
   return htab_hash_pointer (st_smob->symtab);
 }
@@ -96,8 +96,8 @@ stscm_hash_symtab_smob (const void *p)
 static int
 stscm_eq_symtab_smob (const void *ap, const void *bp)
 {
-  const symtab_smob *a = ap;
-  const symtab_smob *b = bp;
+  const symtab_smob *a = (const symtab_smob *) ap;
+  const symtab_smob *b = (const symtab_smob *) bp;
 
   return (a->symtab == b->symtab
 	  && a->symtab != NULL);
@@ -109,8 +109,8 @@ stscm_eq_symtab_smob (const void *ap, const void *bp)
 static htab_t
 stscm_objfile_symtab_map (struct symtab *symtab)
 {
-  struct objfile *objfile = symtab->objfile;
-  htab_t htab = objfile_data (objfile, stscm_objfile_data_key);
+  struct objfile *objfile = SYMTAB_OBJFILE (symtab);
+  htab_t htab = (htab_t) objfile_data (objfile, stscm_objfile_data_key);
 
   if (htab == NULL)
     {
@@ -120,17 +120,6 @@ stscm_objfile_symtab_map (struct symtab *symtab)
     }
 
   return htab;
-}
-
-/* The smob "mark" function for <gdb:symtab>.  */
-
-static SCM
-stscm_mark_symtab_smob (SCM self)
-{
-  symtab_smob *st_smob = (symtab_smob *) SCM_SMOB_DATA (self);
-
-  /* Do this last.  */
-  return gdbscm_mark_eqable_gsmob (&st_smob->base);
 }
 
 /* The smob "free" function for <gdb:symtab>.  */
@@ -303,7 +292,7 @@ stscm_mark_symtab_invalid (void **slot, void *info)
 static void
 stscm_del_objfile_symtabs (struct objfile *objfile, void *datum)
 {
-  htab_t htab = datum;
+  htab_t htab = (htab_t) datum;
 
   if (htab != NULL)
     {
@@ -359,7 +348,7 @@ gdbscm_symtab_objfile (SCM self)
     = stscm_get_valid_symtab_smob_arg_unsafe (self, SCM_ARG1, FUNC_NAME);
   const struct symtab *symtab = st_smob->symtab;
 
-  return ofscm_scm_from_objfile (symtab->objfile);
+  return ofscm_scm_from_objfile (SYMTAB_OBJFILE (symtab));
 }
 
 /* (symtab-global-block <gdb:symtab>) -> <gdb:block>
@@ -374,10 +363,10 @@ gdbscm_symtab_global_block (SCM self)
   const struct blockvector *blockvector;
   const struct block *block;
 
-  blockvector = BLOCKVECTOR (symtab);
+  blockvector = SYMTAB_BLOCKVECTOR (symtab);
   block = BLOCKVECTOR_BLOCK (blockvector, GLOBAL_BLOCK);
 
-  return bkscm_scm_from_block (block, symtab->objfile);
+  return bkscm_scm_from_block (block, SYMTAB_OBJFILE (symtab));
 }
 
 /* (symtab-static-block <gdb:symtab>) -> <gdb:block>
@@ -392,39 +381,13 @@ gdbscm_symtab_static_block (SCM self)
   const struct blockvector *blockvector;
   const struct block *block;
 
-  blockvector = BLOCKVECTOR (symtab);
+  blockvector = SYMTAB_BLOCKVECTOR (symtab);
   block = BLOCKVECTOR_BLOCK (blockvector, STATIC_BLOCK);
 
-  return bkscm_scm_from_block (block, symtab->objfile);
+  return bkscm_scm_from_block (block, SYMTAB_OBJFILE (symtab));
 }
 
 /* Administrivia for sal (symtab-and-line) smobs.  */
-
-/* The smob "mark" function for <gdb:sal>.  */
-
-static SCM
-stscm_mark_sal_smob (SCM self)
-{
-  sal_smob *s_smob = (sal_smob *) SCM_SMOB_DATA (self);
-
-  scm_gc_mark (s_smob->symtab_scm);
-
-  /* Do this last.  */
-  return gdbscm_mark_gsmob (&s_smob->base);
-}
-
-/* The smob "free" function for <gdb:sal>.  */
-
-static size_t
-stscm_free_sal_smob (SCM self)
-{
-  sal_smob *s_smob = (sal_smob *) SCM_SMOB_DATA (self);
-
-  /* Not necessary, done to catch bugs.  */
-  s_smob->symtab_scm = SCM_UNDEFINED;
-
-  return 0;
-}
 
 /* The smob "print" function for <gdb:sal>.  */
 
@@ -627,19 +590,22 @@ gdbscm_find_pc_line (SCM pc_scm)
 {
   ULONGEST pc_ull;
   struct symtab_and_line sal;
-  volatile struct gdb_exception except;
 
   init_sal (&sal); /* -Wall */
 
   gdbscm_parse_function_args (FUNC_NAME, SCM_ARG1, NULL, "U", pc_scm, &pc_ull);
 
-  TRY_CATCH (except, RETURN_MASK_ALL)
+  TRY
     {
       CORE_ADDR pc = (CORE_ADDR) pc_ull;
 
       sal = find_pc_line (pc, 0);
     }
-  GDBSCM_HANDLE_GDB_EXCEPTION (except);
+  CATCH (except, RETURN_MASK_ALL)
+    {
+      GDBSCM_HANDLE_GDB_EXCEPTION (except);
+    }
+  END_CATCH
 
   return stscm_scm_from_sal (sal);
 }
@@ -648,61 +614,63 @@ gdbscm_find_pc_line (SCM pc_scm)
 
 static const scheme_function symtab_functions[] =
 {
-  { "symtab?", 1, 0, 0, gdbscm_symtab_p,
+  { "symtab?", 1, 0, 0, as_a_scm_t_subr (gdbscm_symtab_p),
     "\
 Return #t if the object is a <gdb:symtab> object." },
 
-  { "symtab-valid?", 1, 0, 0, gdbscm_symtab_valid_p,
+  { "symtab-valid?", 1, 0, 0, as_a_scm_t_subr (gdbscm_symtab_valid_p),
     "\
 Return #t if the symtab still exists in GDB.\n\
 Symtabs are deleted when the corresponding objfile is freed." },
 
-  { "symtab-filename", 1, 0, 0, gdbscm_symtab_filename,
+  { "symtab-filename", 1, 0, 0, as_a_scm_t_subr (gdbscm_symtab_filename),
     "\
 Return the symtab's source file name." },
 
-  { "symtab-fullname", 1, 0, 0, gdbscm_symtab_fullname,
+  { "symtab-fullname", 1, 0, 0, as_a_scm_t_subr (gdbscm_symtab_fullname),
     "\
 Return the symtab's full source file name." },
 
-  { "symtab-objfile", 1, 0, 0, gdbscm_symtab_objfile,
+  { "symtab-objfile", 1, 0, 0, as_a_scm_t_subr (gdbscm_symtab_objfile),
     "\
 Return the symtab's objfile." },
 
-  { "symtab-global-block", 1, 0, 0, gdbscm_symtab_global_block,
+  { "symtab-global-block", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_symtab_global_block),
     "\
 Return the symtab's global block." },
 
-  { "symtab-static-block", 1, 0, 0, gdbscm_symtab_static_block,
+  { "symtab-static-block", 1, 0, 0,
+    as_a_scm_t_subr (gdbscm_symtab_static_block),
     "\
 Return the symtab's static block." },
 
-  { "sal?", 1, 0, 0, gdbscm_sal_p,
+  { "sal?", 1, 0, 0, as_a_scm_t_subr (gdbscm_sal_p),
     "\
 Return #t if the object is a <gdb:sal> (symtab-and-line) object." },
 
-  { "sal-valid?", 1, 0, 0, gdbscm_sal_valid_p,
+  { "sal-valid?", 1, 0, 0, as_a_scm_t_subr (gdbscm_sal_valid_p),
     "\
 Return #t if the symtab for the sal still exists in GDB.\n\
 Symtabs are deleted when the corresponding objfile is freed." },
 
-  { "sal-symtab", 1, 0, 0, gdbscm_sal_symtab,
+  { "sal-symtab", 1, 0, 0, as_a_scm_t_subr (gdbscm_sal_symtab),
     "\
 Return the sal's symtab." },
 
-  { "sal-line", 1, 0, 0, gdbscm_sal_line,
+  { "sal-line", 1, 0, 0, as_a_scm_t_subr (gdbscm_sal_line),
     "\
 Return the sal's line number, or #f if there is none." },
 
-  { "sal-pc", 1, 0, 0, gdbscm_sal_pc,
+  { "sal-pc", 1, 0, 0, as_a_scm_t_subr (gdbscm_sal_pc),
     "\
 Return the sal's address." },
 
-  { "sal-last", 1, 0, 0, gdbscm_sal_last,
+  { "sal-last", 1, 0, 0, as_a_scm_t_subr (gdbscm_sal_last),
     "\
 Return the last address specified by the sal, or #f if there is none." },
 
-  { "find-pc-line", 1, 0, 0, gdbscm_find_pc_line,
+  { "find-pc-line", 1, 0, 0, as_a_scm_t_subr (gdbscm_find_pc_line),
     "\
 Return the sal corresponding to the address, or #f if there isn't one.\n\
 \n\
@@ -716,13 +684,10 @@ gdbscm_initialize_symtabs (void)
 {
   symtab_smob_tag
     = gdbscm_make_smob_type (symtab_smob_name, sizeof (symtab_smob));
-  scm_set_smob_mark (symtab_smob_tag, stscm_mark_symtab_smob);
   scm_set_smob_free (symtab_smob_tag, stscm_free_symtab_smob);
   scm_set_smob_print (symtab_smob_tag, stscm_print_symtab_smob);
 
   sal_smob_tag = gdbscm_make_smob_type (sal_smob_name, sizeof (sal_smob));
-  scm_set_smob_mark (sal_smob_tag, stscm_mark_sal_smob);
-  scm_set_smob_free (sal_smob_tag, stscm_free_sal_smob);
   scm_set_smob_print (sal_smob_tag, stscm_print_sal_smob);
 
   gdbscm_define_functions (symtab_functions, 1);

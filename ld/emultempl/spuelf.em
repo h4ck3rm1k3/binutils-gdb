@@ -1,5 +1,5 @@
 # This shell script emits a C file. -*- C -*-
-#   Copyright (C) 2006-2014 Free Software Foundation, Inc.
+#   Copyright (C) 2006-2015 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
 #
@@ -89,9 +89,9 @@ static const struct _ovl_stream icache_mgr_stream = {
 static int
 is_spu_target (void)
 {
-  extern const bfd_target bfd_elf32_spu_vec;
+  extern const bfd_target spu_elf32_vec;
 
-  return link_info.output_bfd->xvec == &bfd_elf32_spu_vec;
+  return link_info.output_bfd->xvec == &spu_elf32_vec;
 }
 
 /* Create our note section.  */
@@ -107,10 +107,10 @@ spu_after_open (void)
       params.emit_stub_syms |= link_info.emitrelocations;
       spu_elf_setup (&link_info, &params);
 
-      if (link_info.relocatable)
+      if (bfd_link_relocatable (&link_info))
 	lang_add_unique (".text.ia.*");
 
-      if (!link_info.relocatable
+      if (!bfd_link_relocatable (&link_info)
 	  && link_info.input_bfds != NULL
 	  && !spu_elf_create_sections (&link_info))
 	einfo ("%X%P: can not create note section: %E\n");
@@ -264,7 +264,7 @@ static void
 spu_before_allocation (void)
 {
   if (is_spu_target ()
-      && !link_info.relocatable
+      && !bfd_link_relocatable (&link_info)
       && !no_overlays)
     {
       int ret;
@@ -318,7 +318,7 @@ spu_before_allocation (void)
     }
 
   if (is_spu_target ()
-      && !link_info.relocatable)
+      && !bfd_link_relocatable (&link_info))
     spu_elf_size_sections (link_info.output_bfd, &link_info);
 
   gld${EMULATION_NAME}_before_allocation ();

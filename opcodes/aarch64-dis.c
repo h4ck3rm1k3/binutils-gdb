@@ -1,5 +1,5 @@
 /* aarch64-dis.c -- AArch64 disassembler.
-   Copyright (C) 2009-2014 Free Software Foundation, Inc.
+   Copyright (C) 2009-2015 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of the GNU opcodes library.
@@ -221,6 +221,17 @@ aarch64_ext_regno (const aarch64_operand *self, aarch64_opnd_info *info,
 		   const aarch64_inst *inst ATTRIBUTE_UNUSED)
 {
   info->reg.regno = extract_field (self->fields[0], code, 0);
+  return 1;
+}
+
+int
+aarch64_ext_regno_pair (const aarch64_operand *self ATTRIBUTE_UNUSED, aarch64_opnd_info *info,
+		   const aarch64_insn code ATTRIBUTE_UNUSED,
+		   const aarch64_inst *inst ATTRIBUTE_UNUSED)
+{
+  assert (info->idx == 1
+	  || info->idx ==3);
+  info->reg.regno = inst->operands[info->idx - 1].reg.regno + 1;
   return 1;
 }
 
@@ -1016,12 +1027,12 @@ aarch64_ext_sysins_op (const aarch64_operand *self ATTRIBUTE_UNUSED,
     default: assert (0); return 0;
     }
 
-  for (i = 0; sysins_ops[i].template != NULL; ++i)
+  for (i = 0; sysins_ops[i].name != NULL; ++i)
     if (sysins_ops[i].value == value)
       {
 	info->sysins_op = sysins_ops + i;
 	DEBUG_TRACE ("%s found value: %x, has_xt: %d, i: %d.",
-		     info->sysins_op->template,
+		     info->sysins_op->name,
 		     (unsigned)info->sysins_op->value,
 		     info->sysins_op->has_xt, i);
 	return 1;
@@ -1359,6 +1370,13 @@ do_special_decoding (aarch64_inst *inst)
       if ((inst->opcode->flags & F_N)
 	  && extract_field (FLD_N, inst->value, 0) != value)
 	return 0;
+    }
+  /* 'sf' field.  */
+  if (inst->opcode->flags & F_LSE_SZ)
+    {
+      idx = select_operand_for_sf_field_coding (inst->opcode);
+      value = extract_field (FLD_lse_sz, inst->value, 0);
+      inst->operands[idx].qualifier = get_greg_qualifier_from_value (value);
     }
   /* size:Q fields.  */
   if (inst->opcode->flags & F_SIZEQ)
@@ -2011,11 +2029,13 @@ user_friendly_fixup (aarch64_inst *inst)
     }
 }
 
-/* Decode INSN and fill in *INST the instruction information.  */
+/* Decode INSN and fill in *INST the instruction information.  An alias
+   opcode may be filled in *INSN if NOALIASES_P is FALSE.  Return zero on
+   success.  */
 
-static int
-disas_aarch64_insn (uint64_t pc ATTRIBUTE_UNUSED, uint32_t insn,
-		    aarch64_inst *inst)
+int
+aarch64_decode_insn (aarch64_insn insn, aarch64_inst *inst,
+		     bfd_boolean noaliases_p)
 {
   const aarch64_opcode *opcode = aarch64_opcode_lookup (insn);
 
@@ -2042,7 +2062,7 @@ disas_aarch64_insn (uint64_t pc ATTRIBUTE_UNUSED, uint32_t insn,
     {
       /* But only one opcode can be decoded successfully for, as the
 	 decoding routine will check the constraint carefully.  */
-      if (aarch64_opcode_decode (opcode, insn, inst, no_aliases) == 1)
+      if (aarch64_opcode_decode (opcode, insn, inst, noaliases_p) == 1)
 	return ERR_OK;
       opcode = aarch64_find_next_opcode (opcode);
     }
@@ -2154,7 +2174,7 @@ print_insn_aarch64_word (bfd_vma pc,
        addresses, since the addend is not currently pc-relative.  */
     pc = 0;
 
-  ret = disas_aarch64_insn (pc, word, &inst);
+  ret = aarch64_decode_insn (word, &inst, no_aliases);
 
   if (((word >> 21) & 0x3ff) == 1)
     {

@@ -1,6 +1,6 @@
 /* AArch64 assembler/disassembler support.
 
-   Copyright (C) 2009-2014 Free Software Foundation, Inc.
+   Copyright (C) 2009-2015 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of GNU Binutils.
@@ -27,6 +27,10 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* The offset for pc-relative addressing is currently defined to be 0.  */
 #define AARCH64_PCREL_OFFSET		0
 
@@ -38,11 +42,24 @@ typedef uint32_t aarch64_insn;
 #define AARCH64_FEATURE_FP	0x00020000	/* FP instructions.  */
 #define AARCH64_FEATURE_SIMD	0x00040000	/* SIMD instructions.  */
 #define AARCH64_FEATURE_CRC	0x00080000	/* CRC instructions.  */
+#define AARCH64_FEATURE_LSE	0x00100000	/* LSE instructions.  */
+#define AARCH64_FEATURE_PAN	0x00200000	/* PAN instructions.  */
+#define AARCH64_FEATURE_LOR	0x00400000	/* LOR instructions.  */
+#define AARCH64_FEATURE_RDMA	0x00800000	/* v8.1 SIMD instructions.  */
 
 /* Architectures are the sum of the base and extensions.  */
 #define AARCH64_ARCH_V8		AARCH64_FEATURE (AARCH64_FEATURE_V8, \
 						 AARCH64_FEATURE_FP  \
 						 | AARCH64_FEATURE_SIMD)
+#define AARCH64_ARCH_V8_1	AARCH64_FEATURE (AARCH64_FEATURE_V8, \
+						 AARCH64_FEATURE_FP  \
+						 | AARCH64_FEATURE_SIMD	\
+						 | AARCH64_FEATURE_LSE	\
+						 | AARCH64_FEATURE_PAN	\
+						 | AARCH64_FEATURE_LOR	\
+						 | AARCH64_FEATURE_RDMA)
+
+
 #define AARCH64_ARCH_NONE	AARCH64_FEATURE (0, 0)
 #define AARCH64_ANY		AARCH64_FEATURE (-1, 0)	/* Any basic core.  */
 
@@ -106,6 +123,7 @@ enum aarch64_opnd
 
   AARCH64_OPND_Rd_SP,	/* Integer Rd or SP.  */
   AARCH64_OPND_Rn_SP,	/* Integer Rn or SP.  */
+  AARCH64_OPND_PAIRREG,	/* Paired register operand.  */
   AARCH64_OPND_Rm_EXT,	/* Integer Rm extended.  */
   AARCH64_OPND_Rm_SFT,	/* Integer Rm shifted.  */
 
@@ -340,6 +358,7 @@ enum aarch64_insn_class
   loadlit,
   log_imm,
   log_shift,
+  lse_atomic,
   movewide,
   pcreladdr,
   ic_system,
@@ -550,7 +569,9 @@ extern aarch64_opcode aarch64_opcode_table[];
 #define F_N (1 << 23)
 /* Opcode dependent field.  */
 #define F_OD(X) (((X) & 0x7) << 24)
-/* Next bit is 27.  */
+/* Instruction has the field of 'sz'.  */
+#define F_LSE_SZ (1 << 27)
+/* Next bit is 28.  */
 
 static inline bfd_boolean
 alias_opcode_p (const aarch64_opcode *opcode)
@@ -599,7 +620,7 @@ get_opcode_dependent_value (const aarch64_opcode *opcode)
 static inline bfd_boolean
 opcode_has_special_coder (const aarch64_opcode *opcode)
 {
-  return (opcode->flags & (F_SF | F_SIZEQ | F_FPTYPE | F_SSIZE | F_T
+  return (opcode->flags & (F_SF | F_LSE_SZ | F_SIZEQ | F_FPTYPE | F_SSIZE | F_T
 	  | F_GPRSIZE_IN_Q | F_LDS_SIZE | F_MISC | F_N | F_COND)) ? TRUE
     : FALSE;
 }
@@ -624,10 +645,14 @@ typedef struct
 extern const aarch64_sys_reg aarch64_sys_regs [];
 extern const aarch64_sys_reg aarch64_pstatefields [];
 extern bfd_boolean aarch64_sys_reg_deprecated_p (const aarch64_sys_reg *);
+extern bfd_boolean aarch64_sys_reg_supported_p (const aarch64_feature_set,
+						const aarch64_sys_reg *);
+extern bfd_boolean aarch64_pstatefield_supported_p (const aarch64_feature_set,
+						    const aarch64_sys_reg *);
 
 typedef struct
 {
-  const char *template;
+  const char *name;
   uint32_t value;
   int has_xt;
 } aarch64_sys_ins_reg;
@@ -901,8 +926,11 @@ aarch64_num_of_operands (const aarch64_opcode *);
 extern int
 aarch64_stack_pointer_p (const aarch64_opnd_info *);
 
-extern
-int aarch64_zero_register_p (const aarch64_opnd_info *);
+extern int
+aarch64_zero_register_p (const aarch64_opnd_info *);
+
+extern int
+aarch64_decode_insn (aarch64_insn, aarch64_inst *, bfd_boolean);
 
 /* Given an operand qualifier, return the expected data element size
    of a qualified operand.  */
@@ -939,5 +967,9 @@ aarch64_verbose (const char *, ...) __attribute__ ((format (printf, 1, 2)));
 #define DEBUG_TRACE(M, ...) ;
 #define DEBUG_TRACE_IF(C, M, ...) ;
 #endif /* DEBUG_AARCH64 */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* OPCODE_AARCH64_H */

@@ -1,6 +1,6 @@
 // target-reloc.h -- target specific relocation support  -*- C++ -*-
 
-// Copyright (C) 2006-2014 Free Software Foundation, Inc.
+// Copyright (C) 2006-2015 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -143,12 +143,6 @@ class Default_comdat_behavior
   }
 };
 
-inline bool
-is_strong_undefined(const Symbol* sym)
-{
-  return sym->is_undefined() && sym->binding() != elfcpp::STB_WEAK;
-}
-
 // Give an error for a symbol with non-default visibility which is not
 // defined locally.
 
@@ -190,7 +184,7 @@ issue_undefined_symbol_error(const Symbol* sym)
     return false;
 
   // We don't report weak symbols.
-  if (sym->binding() == elfcpp::STB_WEAK)
+  if (sym->is_weak_undefined())
     return false;
 
   // We don't report symbols defined in discarded sections.
@@ -215,6 +209,10 @@ issue_undefined_symbol_error(const Symbol* sym)
       if (strcmp(u, "ignore-in-shared-libs") == 0 && !sym->in_reg())
 	return false;
     }
+
+  // If the symbol is hidden, report it.
+  if (sym->visibility() == elfcpp::STV_HIDDEN)
+    return true;
 
   // When creating a shared library, only report unresolved symbols if
   // -z defs was used.
@@ -419,7 +417,7 @@ relocate_section(
 	gold_undefined_symbol_at_location(sym, relinfo, i, offset);
       else if (sym != NULL
 	       && sym->visibility() != elfcpp::STV_DEFAULT
-	       && (is_strong_undefined(sym) || sym->is_from_dynobj()))
+	       && (sym->is_strong_undefined() || sym->is_from_dynobj()))
 	visibility_error(sym);
 
       if (sym != NULL && sym->has_warning())
@@ -668,6 +666,7 @@ relocate_relocs(
 
       // Get the new symbol index.
 
+      Output_section* os = NULL;
       unsigned int new_symndx;
       if (r_sym < local_count)
 	{
@@ -700,7 +699,7 @@ relocate_relocs(
 		unsigned int shndx =
 		  object->local_symbol_input_shndx(r_sym, &is_ordinary);
 		gold_assert(is_ordinary);
-		Output_section* os = object->output_section(shndx);
+		os = object->output_section(shndx);
 		gold_assert(os != NULL);
 		gold_assert(os->needs_symtab_index());
 		new_symndx = os->symtab_index();
@@ -782,7 +781,8 @@ relocate_relocs(
 		typename elfcpp::Elf_types<size>::Elf_Swxword addend;
 		addend = Reloc_types<sh_type, size, big_endian>::
 			   get_reloc_addend(&reloc);
-		addend = psymval->value(object, addend);
+		gold_assert(os != NULL);
+		addend = psymval->value(object, addend) - os->address();
 		Reloc_types<sh_type, size, big_endian>::
 		  set_reloc_addend(&reloc_write, addend);
 	      }
