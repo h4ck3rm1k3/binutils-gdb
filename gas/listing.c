@@ -823,7 +823,7 @@ calc_hex (list_info_type *list)
 
 static int escape(const char * str, FILE *out) {
   const char * ch  = str;
-  while(*ch) {
+  while(*ch++) {
     switch(*ch)
       {
       case '\'':
@@ -841,10 +841,11 @@ static int escape(const char * str, FILE *out) {
       case '>':
       	fputs("&gt;", out);
 	break;
+      case 0:
+	break;
       default:
-	fputs(ch, out);
+	fputc(*ch, out);
       }
-    ch++;
   }
   return 0;
 }
@@ -877,9 +878,9 @@ print_lines (list_info_type *list, unsigned int lineno,
   /*   } */
 
   if (had_errors ())
-    fprintf (list_file, "<line lineno='% 4d' address='%04x' had_errors='true'>", lineno, address);
+    fprintf (list_file, "<line lineno='%4d' address='%04x' had_errors='true'>", lineno, address);
   else
-    fprintf (list_file, "<line lineno='% 4d' address='%04x' >", lineno, address);
+    fprintf (list_file, "<line lineno='%4d' address='%04x' >", lineno, address);
 
   /* And the data to go along with it.  */
   fprintf (list_file, "<bytes>");
