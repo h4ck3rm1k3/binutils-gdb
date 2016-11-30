@@ -221,7 +221,7 @@ static char *data_buffer;
 static void listing_message (const char *, const char *);
 static file_info_type *file_info (const char *);
 static void new_frag (void);
-static void listing_page (list_info_type *);
+//static void listing_page (list_info_type *);
 static unsigned int calc_hex (list_info_type *);
 static void print_lines (list_info_type *, unsigned int, const char *,
 			 unsigned int);
@@ -688,70 +688,70 @@ rebuffer_line (file_info_type *  file,
 
 static const char *fn;
 static unsigned int eject;	/* Eject pending.  */
-static unsigned int page;	/* Current page number.  */
+//static unsigned int page;	/* Current page number.  */
 static const char *title;	/* Current title.  */
 static const char *subtitle;	/* Current subtitle.  */
 static unsigned int on_page;	/* Number of lines printed on current page.  */
 
-static void
-listing_page (list_info_type *list)
-{
-  /* Grope around, see if we can see a title or subtitle edict coming up
-     soon.  (we look down 10 lines of the page and see if it's there)  */
-  if ((eject || (on_page >= (unsigned int) paper_height))
-      && paper_height != 0)
-    {
-      unsigned int c = 10;
-      int had_title = 0;
-      int had_subtitle = 0;
+/* static void */
+/* listing_page (list_info_type *list) */
+/* { */
+/*   /\* Grope around, see if we can see a title or subtitle edict coming up */
+/*      soon.  (we look down 10 lines of the page and see if it's there)  *\/ */
+/*   if ((eject || (on_page >= (unsigned int) paper_height)) */
+/*       && paper_height != 0) */
+/*     { */
+/*       unsigned int c = 10; */
+/*       int had_title = 0; */
+/*       int had_subtitle = 0; */
 
-      page++;
+/*       page++; */
 
-      while (c != 0 && list)
-	{
-	  if (list->edict == EDICT_SBTTL && !had_subtitle)
-	    {
-	      had_subtitle = 1;
-	      subtitle = list->edict_arg;
-	    }
-	  if (list->edict == EDICT_TITLE && !had_title)
-	    {
-	      had_title = 1;
-	      title = list->edict_arg;
-	    }
-	  list = list->next;
-	  c--;
-	}
+/*       while (c != 0 && list) */
+/* 	{ */
+/* 	  if (list->edict == EDICT_SBTTL && !had_subtitle) */
+/* 	    { */
+/* 	      had_subtitle = 1; */
+/* 	      subtitle = list->edict_arg; */
+/* 	    } */
+/* 	  if (list->edict == EDICT_TITLE && !had_title) */
+/* 	    { */
+/* 	      had_title = 1; */
+/* 	      title = list->edict_arg; */
+/* 	    } */
+/* 	  list = list->next; */
+/* 	  c--; */
+/* 	} */
 
-      if (page > 1)
-	{
-	  fprintf (list_file, "\f");
-	}
+/*       if (page > 1) */
+/* 	{ */
+/* 	  fprintf (list_file, "\f"); */
+/* 	} */
 
-      fprintf (list_file, "%s %s \t\t\tpage %d\n", LISTING_HEADER, fn, page);
-      fprintf (list_file, "%s\n", title);
-      fprintf (list_file, "%s\n", subtitle);
-      on_page = 3;
-      eject = 0;
-    }
-}
+/*       fprintf (list_file, "%s %s \t\t\tpage %d\n", LISTING_HEADER, fn, page); */
+/*       fprintf (list_file, "%s\n", title); */
+/*       fprintf (list_file, "%s\n", subtitle); */
+/*       on_page = 3; */
+/*       eject = 0; */
+/*     } */
+/* } */
 
 /* Print a line into the list_file.  Update the line count
    and if necessary start a new page.  */
 
-static void
-emit_line (list_info_type * list, const char * format, ...)
-{
-  va_list args;
+/* static void */
+/* emit_line (list_info_type * list, const char * format, ...) */
+/* { */
+/*   va_list args; */
 
-  va_start (args, format);
+/*   va_start (args, format); */
 
-  vfprintf (list_file, format, args);
-  on_page++;
-  listing_page (list);
+/*   vfprintf (list_file, format, args); */
+/*   on_page++; */
+/*   //listing_page (list); */
 
-  va_end (args);
-}
+/*   va_end (args); */
+/* } */
 
 static unsigned int
 calc_hex (list_info_type *list)
@@ -821,97 +821,89 @@ calc_hex (list_info_type *list)
   return address;
 }
 
+static int escape(const char * str, FILE *out) {
+  const char * ch  = str;
+  while(*ch) {
+    switch(*ch)
+      {
+      case '\'':
+	fputs("&apos;", out);
+	break;
+      case '\"':
+      	fputs("&quot;", out);
+	break;
+      case '&':
+      	fputs("&amp;", out);
+	break;
+      case '<':
+      	fputs("&lt;", out);
+	break;
+      case '>':
+      	fputs("&gt;", out);
+	break;
+      default:
+	fputs(ch, out);
+      }
+    ch++;
+  }
+  return 0;
+}
+  
 static void
 print_lines (list_info_type *list, unsigned int lineno,
 	     const char *string, unsigned int address)
 {
-  unsigned int idx;
-  unsigned int nchars;
-  unsigned int lines;
+  //unsigned int idx;
+  //unsigned int nchars;
+  //  unsigned int lines;
   unsigned int octet_in_word = 0;
   char *src = data_buffer;
   int cur;
   struct list_message *msg;
 
   /* Print the stuff on the first line.  */
-  listing_page (list);
-  nchars = (LISTING_WORD_SIZE * 2 + 1) * listing_lhs_width;
+  //listing_page (list);
+  //nchars = (LISTING_WORD_SIZE * 2 + 1) * listing_lhs_width;
 
-  /* Print the hex for the first line.  */
-  if (address == ~(unsigned int) 0)
-    {
-      fprintf (list_file, "% 4d     ", lineno);
-      for (idx = 0; idx < nchars; idx++)
-	fprintf (list_file, " ");
+  /* /\* Print the hex for the first line.  *\/ */
+  /* if (address == ~(unsigned int) 0) */
+  /*   { */
+  /*     fprintf (list_file, "% 4d     ", lineno); */
+  /*     //for (idx = 0; idx < nchars; idx++) */
+  /*     //fprintf (list_file, " "); */
 
-      emit_line (NULL, "\t%s\n", string ? string : "");
-      return;
-    }
+  /*     emit_line (NULL, "\t%s\n", string ? string : ""); */
+  /*     return; */
+  /*   } */
 
   if (had_errors ())
-    fprintf (list_file, "% 4d ???? ", lineno);
+    fprintf (list_file, "<line lineno='% 4d' address='%04x' had_errors='true'>", lineno, address);
   else
-    fprintf (list_file, "% 4d %04x ", lineno, address);
+    fprintf (list_file, "<line lineno='% 4d' address='%04x' >", lineno, address);
 
   /* And the data to go along with it.  */
-  idx = 0;
+  fprintf (list_file, "<bytes>");
+  //idx = 0;
   cur = 0;
-  while (src[cur] && idx < nchars)
+  while (src[cur] )
     {
       int offset;
       offset = cur;
-      fprintf (list_file, "%c%c", src[offset], src[offset + 1]);
+      fprintf (list_file, "<byte>%c%c</byte>", src[offset], src[offset + 1]);
       cur += 2;
       octet_in_word++;
-
-      if (octet_in_word == LISTING_WORD_SIZE)
-	{
-	  fprintf (list_file, " ");
-	  idx++;
-	  octet_in_word = 0;
-	}
-
-      idx += 2;
     }
+  fprintf (list_file, "</bytes>");
 
-  for (; idx < nchars; idx++)
-    fprintf (list_file, " ");
+  fprintf (list_file,"<string>");
+  escape(string, list_file);
+  fprintf (list_file,"</string>"); 
 
-  emit_line (list, "\t%s\n", string ? string : "");
-
+  fprintf (list_file, "<messages>\n");
   for (msg = list->messages; msg; msg = msg->next)
-    emit_line (list, "****  %s\n", msg->message);
-
-  for (lines = 0;
-       lines < (unsigned int) listing_lhs_cont_lines
-	 && src[cur];
-       lines++)
-    {
-      nchars = ((LISTING_WORD_SIZE * 2) + 1) * listing_lhs_width_second - 1;
-      idx = 0;
-
-      /* Print any more lines of data, but more compactly.  */
-      fprintf (list_file, "% 4d      ", lineno);
-
-      while (src[cur] && idx < nchars)
-	{
-	  int offset;
-	  offset = cur;
-	  fprintf (list_file, "%c%c", src[offset], src[offset + 1]);
-	  cur += 2;
-	  idx += 2;
-	  octet_in_word++;
-
-	  if (octet_in_word == LISTING_WORD_SIZE)
-	    {
-	      fprintf (list_file, " ");
-	      idx++;
-	      octet_in_word = 0;
-	    }
-	}
-
-      emit_line (list, "\n");
-    }
+    fprintf (list_file, "<message>%s</message>\n", msg->message);
+  fprintf (list_file, "</messages>\n");
+  fprintf (list_file, "</line>\n");  
 }
 
 static void
@@ -922,7 +914,7 @@ list_symbol_table (void)
 
   symbolS *ptr;
   eject = 1;
-  listing_page (NULL);
+  //listing_page (NULL);
 
   for (ptr = symbol_rootP; ptr != (symbolS *) NULL; ptr = symbol_next (ptr))
     {
@@ -978,7 +970,7 @@ list_symbol_table (void)
 		}
 
 	      on_page++;
-	      listing_page (NULL);
+	      //listing_page (NULL);
 	    }
 	}
 
@@ -988,7 +980,7 @@ list_symbol_table (void)
       fprintf (list_file, "NO DEFINED SYMBOLS\n");
       on_page++;
     }
-  emit_line (NULL, "\n");
+  //emit_line (NULL, "\n");
 
   got_some = 0;
 
@@ -1002,16 +994,16 @@ list_symbol_table (void)
 		{
 		  got_some = 1;
 
-		  emit_line (NULL, "UNDEFINED SYMBOLS\n");
+		  //emit_line (NULL, "UNDEFINED SYMBOLS\n");
 		}
 
-	      emit_line (NULL, "%s\n", S_GET_NAME (ptr));
+	      //emit_line (NULL, "%s\n", S_GET_NAME (ptr));
 	    }
 	}
     }
 
-  if (!got_some)
-    emit_line (NULL, "NO UNDEFINED SYMBOLS\n");
+  //if (!got_some)
+  // emit_line (NULL, "NO UNDEFINED SYMBOLS\n");
 }
 
 typedef struct cached_line
@@ -1074,7 +1066,7 @@ print_source (file_info_type *  current_file,
 	  rebuffer_line (current_file, cache->line, cache->buffer, width);
 	}
 
-      emit_line (list, "%4u:%-13s **** %s\n",
+      fprintf (list_file, "%4u:%-13s **** %s\n",
 		 cache->line, cache->file->filename, cache->buffer);
       return;
     }
@@ -1103,7 +1095,7 @@ print_source (file_info_type *  current_file,
 		next_free_line = 0;
 	    }
 
-	  emit_line (list, "%4u:%-13s **** %s\n",
+	  fprintf (list_file, "%4u:%-13s **** %s\n",
 		     cache->line, cache->file->filename, p);
 	  num_lines_shown ++;
 	}
@@ -1381,7 +1373,7 @@ listing_general_info (char ** argv)
 {
   /* Print the stuff on the first line.  */
   eject = 1;
-  listing_page (NULL);
+  //listing_page (NULL);
 
   fprintf (list_file,
            _(" GNU assembler version %s (%s)\n\t using BFD version %s."),
