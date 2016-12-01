@@ -823,7 +823,7 @@ calc_hex (list_info_type *list)
 
 static int escape(const char * str, FILE *out) {
   const char * ch  = str;
-  while(*ch++) {
+  while(*ch) {
     switch(*ch)
       {
       case '\'':
@@ -846,6 +846,7 @@ static int escape(const char * str, FILE *out) {
       default:
 	fputc(*ch, out);
       }
+    ch++;
   }
   return 0;
 }
